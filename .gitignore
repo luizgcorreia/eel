@@ -7,3 +7,22 @@ __pycache__/
 .pytest_cache/
 edel.egg-info/
 external/
+
+# LaTeX intermediate / build auxiliary files
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex
+*.bcf
+*.run.xml
+
+# LaTeX page previews
+page-*.png
