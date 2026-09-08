@@ -125,3 +125,41 @@ free -h
 # Check shared storage
 df -h /home
 ```
+
+---
+
+## 6. Isabelle & I/L (Isabelle/Landscape) on `deeptwelve`
+
+### Component Locations & Paths
+- **Isabelle Binary:** `~/Isabelle2025-2/bin/isabelle` (configured in `~/.bashrc` `PATH`)
+- **AFP Component:** `~/lcorreia/eel/external/afp-2025-2` (registered in Isabelle via `isabelle components -u`)
+- **Heap Output Directory:** `~/.isabelle/Isabelle2025-2/heaps/polyml-5.9.2_x86_64_32-linux/`
+- **AutoCorrode / IR REPL:** `~/lcorreia/eel/AutoCorrode/ir/repl.py`
+
+### Common Commands
+- **Verify Isabelle version:**
+  ```bash
+  isabelle version
+  ```
+- **Build / Record Session Heaps (e.g. `HOL-Library` with 16 cores):**
+  ```bash
+  isabelle build -b -o record_theories=true -d ~/lcorreia/eel/external/afp-2025-2/thys -j 16 HOL-Library
+  ```
+- **Start I/R REPL Daemon (TCP & MCP):**
+  ```bash
+  source ~/lcorreia/eel/.venv/bin/activate
+  python ~/lcorreia/eel/AutoCorrode/ir/repl.py \
+    --isabelle ~/Isabelle2025-2/bin/isabelle \
+    --session HOL-Library \
+    --dir ~/lcorreia/eel/external/afp-2025-2/thys \
+    --mcp
+  ```
+- **Run I/L Ingestion & Static Index Construction:**
+  ```bash
+  source ~/lcorreia/eel/.venv/bin/activate
+  python -m edel.il.build_il_index \
+    --provider voyage \
+    --model voyage-code-3 \
+    --output artifacts/rag_index
+  ```
+

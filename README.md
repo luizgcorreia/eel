@@ -132,6 +132,30 @@ Erdos includes automated, background screen-managed backups of artifacts:
 
 ---
 
+### C. Isabelle & I/L Pipeline Setup (`deeptwelve`)
+
+The IME USP compute node `deeptwelve` is fully equipped for running Isabelle/Landscape (I/L) RAG and REPL experiments:
+
+- **Isabelle:** `Isabelle2025-2` installed locally at `~/Isabelle2025-2` (added to `PATH`).
+- **Archive of Formal Proofs (AFP):** Extracted to `~/lcorreia/eel/external/afp-2025-2` and registered with Isabelle.
+- **Pre-recorded Session Heap:** `HOL-Library` compiled with `-o record_theories=true` for deep theory analysis and theorem retrieval.
+- **AutoCorrode I/R REPL:** Fully functional within the virtual environment (`~/lcorreia/eel/.venv`).
+
+#### Quick Verification on `deeptwelve`
+```bash
+# 1. Verify Isabelle version
+isabelle version
+
+# 2. Check registered components (should list external/afp-2025-2)
+isabelle components -l
+
+# 3. Test the AutoCorrode I/R REPL
+source ~/lcorreia/eel/.venv/bin/activate
+python AutoCorrode/ir/repl.py --help
+```
+
+---
+
 ## 3. Running Experiments & Pipeline
 
 ### CLI Execution
