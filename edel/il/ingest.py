@@ -40,8 +40,10 @@ class EphemeralReplClient:
                 raise RuntimeError(f"Authentication failed: {resp}")
                 
             # Send payload
-            sock.sendall(ml_command.encode())
-            sock.sendall(f"\n{SENTINEL}\n".encode())
+            cmd = ml_command.strip()
+            if not cmd.startswith("/") and not cmd.endswith(";"):
+                cmd = cmd + ";"
+            sock.sendall(f"{cmd}\n".encode())
             
             # Read response
             chunks = []
@@ -158,11 +160,16 @@ def ingest_session_lemmas(
                     "finding":         aspects["aspect_dependencies"],
                     "interpretation":  aspects["aspect_context"],
                     "theory":          lemma["theory"],
+                    "locale":          lemma.get("locale", ""),
+                    "context_scope":   lemma.get("context_scope", "global"),
+                    "attributes":      lemma.get("attributes", []),
+                    "rule_type":       lemma.get("rule_type", "general_theorem"),
                     "keyword":         lemma["keyword"],
                     "file":            lemma["file"],
                     "line":            lemma["line"],
                     "proof_text":      lemma["proof_text"],
                     "statement_text":  lemma["statement_text"],
+                    "proof_steps":     lemma.get("proof_steps", []),
                     "cited_deps":      _extract_dependencies(lemma["proof_text"]),
                     "dependents":      "none",
                     "publication_year": pub_year,

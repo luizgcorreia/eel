@@ -419,3 +419,132 @@ class NumpyRAGIndex:
                 "source": h["source"],
             })
         return results
+
+    # ── EEL Conditional Transition Operators ──────────────────────────────────
+
+    def conditional_search(
+        self,
+        query_vector: list[float],
+        search_aspect: str,
+        return_aspect: str | None = None,
+        max_results: int = 10,
+        exclude_definitions: bool = True,
+    ) -> list[dict[str, Any]]:
+        """D(return_aspect | search_aspect) operator.
+
+        Searches ``search_aspect`` space and tags every result with the canonical
+        D-operator label.  Because every search result already exposes all four
+        aspect fields, a single call simultaneously computes D(X|search_aspect)
+        for every X — the caller selects which field to highlight via
+        ``return_aspect``.
+
+        Args:
+            query_vector:  Query embedding vector.
+            search_aspect: Canonical aspect name to search in
+                           (``problem``, ``method``, ``finding``, ``interpretation``).
+            return_aspect: Canonical aspect name to highlight in results.
+                           If ``None`` all aspect fields are returned unlabelled.
+            max_results:   Maximum number of results to return.
+            exclude_definitions: Whether to exclude definition-type lemmas.
+
+        Returns:
+            List of result dicts (same schema as ``search``), each annotated with
+            ``d_operator``, ``search_aspect``, and ``return_aspect`` keys.
+        """
+        hits = self.search(
+            query_vector=query_vector,
+            aspect=search_aspect,
+            max_results=max_results,
+            exclude_definitions=exclude_definitions,
+        )
+        label = f"D({return_aspect or 'all'}|{search_aspect})"
+        for h in hits:
+            h["d_operator"] = label
+            h["search_aspect"] = search_aspect
+            h["return_aspect"] = return_aspect
+        return hits
+
+    def two_hop_search(
+        self,
+        query_vector: list[float],
+        hop1_aspect: str,
+        hop2_aspect: str,
+        return_aspect: str,
+        max_results: int = 5,
+        min_hop1_score: float = 0.60,
+    ) -> list[dict[str, Any]]:
+        """D(return_aspect | hop2_aspect) ∘ D(hop2_aspect | hop1_aspect) — 2-hop chain.
+
+        Default use: D(finding|method) ∘ D(method|problem) — strategy-calibrated tactics.
+
+        Hop 1: Search ``hop1_aspect`` space with ``query_vector``; take the best
+               matching lemma and look up its ``hop2_aspect`` embedding.
+        Hop 2: Search ``hop2_aspect`` space with that embedding; return
+               ``return_aspect`` content of the nearest strategy-similar lemmas.
+
+        The hop-2 query is only executed when the hop-1 best score meets the
+        confidence gate (``min_hop1_score``); otherwise an empty list is returned.
+
+        Args:
+            query_vector:     Query embedding vector (typically the theorem statement).
+            hop1_aspect:      First search space (e.g. ``problem``).
+            hop2_aspect:      Second search space (e.g. ``method``).
+            return_aspect:    Content aspect to highlight in results (e.g. ``finding``).
+            max_results:      Maximum results from hop 2.
+            min_hop1_score:   Cosine-similarity threshold for the hop-1 best match.
+                              If the best hop-1 score is below this value the chain
+                              is aborted and an empty list is returned.
+
+        Returns:
+            Hop-2 result dicts annotated with ``d_operator``, ``return_aspect``,
+            and ``hop1_anchor`` (title of the lemma used as the hop-2 pivot).
+        """
+        hop1_hits = self.search(
+            query_vector=query_vector,
+            aspect=hop1_aspect,
+            max_results=3,
+            exclude_definitions=True,
+        )
+        if not hop1_hits or hop1_hits[0]["score"] < min_hop1_score:
+            return []
+
+        best = hop1_hits[0]
+        best_title = best["lemma"]["title"]
+        source = best.get("source", "static")
+
+        # Retrieve the hop2_aspect embedding for the best-matching lemma
+        hop2_vec: np.ndarray | None = None
+        if source == "static":
+            mat = self.embeddings.get(hop2_aspect)
+            if mat is not None:
+                idx = next(
+                    (i for i, m in enumerate(self.metadata) if m["title"] == best_title),
+                    None,
+                )
+                if idx is not None:
+                    hop2_vec = mat[idx]
+        else:
+            live_list = self.live_embeddings.get(hop2_aspect, [])
+            idx = next(
+                (i for i, m in enumerate(self.live_metadata) if m["title"] == best_title),
+                None,
+            )
+            if idx is not None and idx < len(live_list):
+                hop2_vec = np.array(live_list[idx], dtype=np.float32)
+
+        if hop2_vec is None:
+            return []
+
+        hop2_hits = self.search(
+            query_vector=hop2_vec.tolist(),
+            aspect=hop2_aspect,
+            max_results=max_results,
+            exclude_definitions=True,
+        )
+        label = f"D({return_aspect}|{hop2_aspect})∘D({hop2_aspect}|{hop1_aspect})"
+        for h in hop2_hits:
+            h["d_operator"] = label
+            h["return_aspect"] = return_aspect
+            h["hop1_anchor"] = best_title
+            h["hop1_score"] = best["score"]
+        return hop2_hits

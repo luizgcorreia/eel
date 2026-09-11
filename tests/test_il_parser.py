@@ -145,4 +145,69 @@ def test_extract_aspects_cartouches():
     assert aspects["aspect_context"] == "compact (f ` set_of X)"
 
 
+def test_extract_lemma_name_and_attributes():
+    from edel.il.parser import extract_lemma_name_and_attributes
+    
+    name, attrs, loc = extract_lemma_name_and_attributes('lemma count_inI [simp, intro!]: assumes "count M x = 0" shows "False"')
+    assert name == "count_inI"
+    assert attrs == ["simp", "intro!"]
+    assert loc == ""
+
+    name2, attrs2, loc2 = extract_lemma_name_and_attributes('lemma (in group) inv_mult [simp]: "inv (x * y) = inv y * inv x"')
+    assert name2 == "inv_mult"
+    assert attrs2 == ["simp"]
+    assert loc2 == "group"
+
+
+def test_scope_stack_and_locales():
+    from edel.il.parser import group_segments_to_lemmas
+    
+    seg_map = {
+        0: {"keyword": "locale", "line": 1, "offset": 0, "theory": "Algebra", "file": "Algebra.thy"},
+        2: {"keyword": "lemma", "line": 3, "offset": 50, "theory": "Algebra", "file": "Algebra.thy"},
+        4: {"keyword": "by", "line": 4, "offset": 80, "theory": "Algebra", "file": "Algebra.thy"},
+        6: {"keyword": "end", "line": 5, "offset": 100, "theory": "Algebra", "file": "Algebra.thy"},
+    }
+    segments = {
+        0: "locale monoid = fixes mult begin",
+        2: 'lemma mult_assoc [simp]: "mult (mult a b) c = mult a (mult b c)"',
+        4: "by simp",
+        6: "end",
+    }
+    units = group_segments_to_lemmas(seg_map, segments)
+    assert len(units) == 1
+    u = units[0]
+    assert u["name"] == "mult_assoc"
+    assert u["locale"] == "monoid"
+    assert u["context_scope"] == "monoid"
+    assert u["attributes"] == ["simp"]
+    assert u["rule_type"] == "simplification_rule"
+
+
+def test_extract_proof_step_map():
+    from edel.il.parser import extract_proof_step_map
+    
+    proof_segs = [
+        "proof (induction xs)",
+        "case Nil",
+        "then show ?case by simp",
+        "next",
+        "case (Cons x xs)",
+        'have y_mem: "y : set xs" using assms by (simp add: not_in_iff)',
+        "then show ?case using y_mem by auto",
+        "qed",
+    ]
+    steps = extract_proof_step_map(proof_segs)
+    assert len(steps) >= 6
+    assert steps[0]["type"] == "proof_opening"
+    assert "Nil" in steps[1]["claim"]
+    
+    # Check coupled claim and tactic in step with 'have'
+    have_step = next(s for s in steps if s["type"] == "have")
+    assert "y_mem" in have_step["claim"]
+    assert "by (simp add: not_in_iff)" in have_step["tactic"]
+    assert "not_in_iff" in have_step["deps"]
+
+
+
 

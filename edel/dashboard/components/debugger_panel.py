@@ -54,7 +54,7 @@ def debugger_panel_layout() -> dbc.Container:
                             id="debug-remove-pc",
                             type="number",
                             min=0,
-                            max=10,
+                            max=100,
                             step=1,
                             value=0,
                             className="form-control mb-3"

@@ -15,19 +15,27 @@ def run_landscape_stage(
     ls_cfg = config.get("landscape", {})
     method = config.get("dimensionality_reduction", {}).get("method", "umap")
 
-    # 0. Get global boundaries from documents to ensure terrain and field match perfectly
+    # 0. Get global boundaries from config or documents
     px_col = f"proj_problem_{method}_x" if f"proj_problem_{method}_x" in df.columns else f"proj_{method}_x"
     py_col = f"proj_problem_{method}_y" if f"proj_problem_{method}_y" in df.columns else f"proj_{method}_y"
     
-    if px_col in df.columns:
+    if "x_range" in ls_cfg and ls_cfg["x_range"]:
+        x_range = tuple(ls_cfg["x_range"])
+    elif px_col in df.columns:
         x_min, x_max = df[px_col].min(), df[px_col].max()
-        y_min, y_max = df[py_col].min(), df[py_col].max()
         dx_pad = (x_max - x_min) * 0.10
-        dy_pad = (y_max - y_min) * 0.10
         x_range = (x_min - dx_pad, x_max + dx_pad)
+    else:
+        x_range = None
+
+    if "y_range" in ls_cfg and ls_cfg["y_range"]:
+        y_range = tuple(ls_cfg["y_range"])
+    elif py_col in df.columns:
+        y_min, y_max = df[py_col].min(), df[py_col].max()
+        dy_pad = (y_max - y_min) * 0.10
         y_range = (y_min - dy_pad, y_max + dy_pad)
     else:
-        x_range, y_range = None, None
+        y_range = None
 
     results = {}
 
@@ -183,6 +191,16 @@ def compute_cluster_regions(
     x_min, x_max = x_range if x_range else (X.min(), X.max())
     y_min, y_max = y_range if y_range else (Y.min(), Y.max())
     
+    # Filter out points outside [x_min, x_max] and [y_min, y_max] so outliers
+    # don't get forced into border cells via np.clip, preventing elongated boundary hulls
+    in_bounds = (X >= x_min) & (X <= x_max) & (Y >= y_min) & (Y <= y_max)
+    X = X[in_bounds]
+    Y = Y[in_bounds]
+    C = C[in_bounds]
+    
+    if len(X) == 0:
+        return {}
+    
     xi = np.linspace(x_min, x_max, num_bins)
     yi = np.linspace(y_min, y_max, num_bins)
     
@@ -212,9 +230,8 @@ def compute_cluster_regions(
             
     for (iy, ix), clusters in cell_dict.items():
         grid_density[iy, ix] = len(clusters)
-        if len(clusters) >= min_density:
-            counter = collections.Counter(clusters)
-            grid_clusters[iy, ix] = counter.most_common(1)[0][0]
+        counter = collections.Counter(clusters)
+        grid_clusters[iy, ix] = counter.most_common(1)[0][0]
             
     from scipy.spatial import ConvexHull
     from matplotlib.path import Path
@@ -228,34 +245,45 @@ def compute_cluster_regions(
     
     for cluster in unique_clusters:
         mask = (grid_clusters == cluster)
+        labeled, num_features = label(mask)
+        comp_sizes = [(labeled == comp).sum() for comp in range(1, num_features + 1)]
+        if not comp_sizes:
+            continue
+        max_size = max(comp_sizes)
+        main_comp = comp_sizes.index(max_size) + 1
+        main_mask = (labeled == main_comp)
         
-        # Get cell centers
-        cell_x = xi_grid[mask].flatten()
-        cell_y = yi_grid[mask].flatten()
+        # Primary centroid at center of mass of the dominant cluster island
+        centroids[cluster] = {
+            "x": float(xi_grid[main_mask].mean()),
+            "y": float(yi_grid[main_mask].mean())
+        }
         
         paths = []
-        if len(cell_x) >= min_cells:
-            # Centroid (center of mass of the grid cells)
-            cy = yi_grid[mask].mean()
-            cx = xi_grid[mask].mean()
-            centroids[cluster] = {"x": cx, "y": cy}
-            
-            # Add 4 corners for each cell to ensure the hull encompasses the entire cell area
-            pts_x = np.concatenate([cell_x - dx/2, cell_x + dx/2, cell_x - dx/2, cell_x + dx/2])
-            pts_y = np.concatenate([cell_y - dy/2, cell_y - dy/2, cell_y + dy/2, cell_y + dy/2])
-            pts = np.column_stack((pts_x, pts_y))
-            
-            try:
-                hull = ConvexHull(pts)
-                hx = pts[hull.vertices, 0].tolist()
-                hy = pts[hull.vertices, 1].tolist()
-                # Close the polygon
-                hx.append(hx[0])
-                hy.append(hy[0])
-                paths.append({"x": hx, "y": hy})
-            except Exception:
-                pass # E.g., if points are perfectly collinear
+        for comp in range(1, num_features + 1):
+            comp_mask = (labeled == comp)
+            c_size = comp_mask.sum()
+            # Draw hull for primary component or substantial sub-islands (>= 40% of max_size and >= min_cells)
+            if (comp == main_comp and c_size >= min_cells) or (c_size >= max(min_cells, int(max_size * 0.40))):
+                cell_x = xi_grid[comp_mask].flatten()
+                cell_y = yi_grid[comp_mask].flatten()
                 
+                # Add 4 corners for each cell to ensure the hull encompasses the entire cell area
+                pts_x = np.concatenate([cell_x - dx/2, cell_x + dx/2, cell_x - dx/2, cell_x + dx/2])
+                pts_y = np.concatenate([cell_y - dy/2, cell_y - dy/2, cell_y + dy/2, cell_y + dy/2])
+                pts = np.column_stack((pts_x, pts_y))
+                
+                try:
+                    hull = ConvexHull(pts)
+                    hx = pts[hull.vertices, 0].tolist()
+                    hy = pts[hull.vertices, 1].tolist()
+                    # Close the polygon
+                    hx.append(hx[0])
+                    hy.append(hy[0])
+                    paths.append({"x": hx, "y": hy})
+                except Exception:
+                    pass # E.g., if points are collinear
+                    
         if paths:
             boundaries[cluster] = paths
             

@@ -270,3 +270,72 @@ def test_numpy_rag_index_dynamic_dependents():
     assert isinstance(meta_dict["HOL.List.lemma_G"]["dependents_count"], int)
     assert isinstance(meta_dict["HOL.List.lemma_H"]["dependents_count"], int)
 
+
+def test_numpy_rag_index_d_operators():
+    df = pd.DataFrame([
+        {
+            "title": "HOL.List.append_Nil",
+            "problem": "[] @ ys = ys",
+            "method": "Theory List",
+            "finding": "by simp",
+            "interpretation": "[] @ ys = ys",
+            "theory": "HOL.List",
+            "keyword": "lemma",
+            "problem_embedding": json.dumps([1.0, 0.0]),
+            "method_embedding": json.dumps([0.0, 1.0]),
+            "finding_embedding": json.dumps([0.7, 0.7]),
+            "interpretation_embedding": json.dumps([1.0, 0.0]),
+        },
+        {
+            "title": "HOL.List.append_Cons",
+            "problem": "(x # xs) @ ys = x # (xs @ ys)",
+            "method": "Theory List",
+            "finding": "by auto",
+            "interpretation": "(x # xs) @ ys = x # (xs @ ys)",
+            "theory": "HOL.List",
+            "keyword": "theorem",
+            "problem_embedding": json.dumps([0.8, 0.6]),
+            "method_embedding": json.dumps([0.0, 1.0]),
+            "finding_embedding": json.dumps([0.7, 0.7]),
+            "interpretation_embedding": json.dumps([0.8, 0.6]),
+        },
+    ])
+    idx = NumpyRAGIndex()
+    idx.build_from_dataframe(df)
+
+    # 1. conditional_search
+    cond_hits = idx.conditional_search(
+        query_vector=[1.0, 0.0],
+        search_aspect="problem",
+        return_aspect="method",
+        max_results=2,
+    )
+    assert len(cond_hits) == 2
+    assert cond_hits[0]["d_operator"] == "D(method|problem)"
+    assert cond_hits[0]["search_aspect"] == "problem"
+    assert cond_hits[0]["return_aspect"] == "method"
+
+    # 2. two_hop_search: D(finding|method) ∘ D(method|problem)
+    # Hop 1 matches append_Nil (score 1.0 >= min_hop1_score 0.60), hop 2 searches method [0.0, 1.0]
+    two_hop_hits = idx.two_hop_search(
+        query_vector=[1.0, 0.0],
+        hop1_aspect="problem",
+        hop2_aspect="method",
+        return_aspect="finding",
+        max_results=2,
+        min_hop1_score=0.60,
+    )
+    assert len(two_hop_hits) > 0
+    assert "D(finding|method)∘D(method|problem)" in two_hop_hits[0]["d_operator"]
+    assert two_hop_hits[0]["hop1_anchor"] == "HOL.List.append_Nil"
+
+    # Gated: should return [] if threshold is impossible
+    gated_hits = idx.two_hop_search(
+        query_vector=[1.0, 0.0],
+        hop1_aspect="problem",
+        hop2_aspect="method",
+        return_aspect="finding",
+        min_hop1_score=1.5,
+    )
+    assert gated_hits == []
+

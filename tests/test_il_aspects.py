@@ -37,10 +37,10 @@ def test_extract_aspects_basic():
     # problem: premises of the statement (no split -> falls back to statement)
     assert aspects["aspect_statement"] == '[] @ ys = ys'
 
-    # method: declarative skeleton (tactic-only proof collapses M=F)
-    assert aspects["aspect_strategy"] == "by simp"
+    # method: strategic architecture (equational normalization via simplifier)
+    assert "equational-normalization" in aspects["aspect_strategy"]
 
-    # finding: tactics
+    # finding: tactics / step map
     assert "by simp" in aspects["aspect_dependencies"]
 
     # interpretation: conclusion of the statement

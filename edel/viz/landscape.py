@@ -205,10 +205,21 @@ def plot_landscape_3d(
         labels = []
         for _, row in top_papers.iterrows():
             authors_list = parse_authorships(row.get("authorships", ""))
-            first_author = authors_list[0].get("name", "Unknown") if authors_list else "Unknown"
-            last_name = first_author.split()[-1] if first_author != "Unknown" else "Unknown"
-            year = str(row.get("publication_year", ""))[:4]
-            labels.append(f"{last_name} ({year})")
+            first_author = authors_list[0].get("name", "") if authors_list else ""
+            if first_author and first_author.lower() not in ("unknown", "none", ""):
+                last_name = first_author.split()[-1]
+                year = str(row.get("publication_year", ""))[:4]
+                labels.append(f"{last_name} ({year})" if year else last_name)
+            elif "title" in row and pd.notna(row["title"]) and str(row["title"]).strip():
+                raw_title = str(row["title"]).strip()
+                lemma_name = raw_title.split(".")[-1] if "." in raw_title else raw_title
+                labels.append(lemma_name)
+            elif "id" in row and pd.notna(row["id"]) and str(row["id"]).strip():
+                raw_id = str(row["id"]).strip()
+                lemma_name = raw_id.split(".")[-1] if "." in raw_id else raw_id
+                labels.append(lemma_name)
+            else:
+                labels.append("Hub")
             
         # Re-calculate Z for these specific points to ensure they sit on the surface
         if raw_metric in top_papers.columns:
@@ -302,7 +313,8 @@ def plot_landscape_contour(
         return None
 
     # Retrieve semantic labels if available
-    z_label = terrain.get("metric", z_label)
+    if z_label == "Impact":
+        z_label = terrain.get("metric", z_label)
     if label_results:
         axes_info = label_results.get("axes", [])
         if len(axes_info) >= 1:
@@ -337,8 +349,11 @@ def plot_landscape_contour(
             z=zi, x=x_coords, y=y_coords,
             colorscale="Viridis",
             contours=dict(showlabels=False),
-            colorbar=dict(title=z_label),
-            opacity=0.8,
+            colorbar=dict(
+                title=dict(text=z_label, font=dict(family="Times New Roman", size=18, color="black")),
+                tickfont=dict(family="Times New Roman", size=15, color="black")
+            ),
+            opacity=0.85,
             name="Terrain Contours"
         )
     )
@@ -362,7 +377,7 @@ def plot_landscape_contour(
         df_scatter = df_plot
 
     # Resolve projection method fallback if missing
-    x_cols = [c for c in df.columns if c.startswith("proj_") and c.endswith("_x")]
+    x_cols = [c for c in df.columns if c.startswith("proj_problem_") and (c.endswith("_x") or c.endswith("_y"))]
     requested_col = f"proj_problem_{method}_x" if f"proj_problem_{method}_x" in df.columns else f"proj_{method}_x"
     if requested_col not in df.columns and x_cols:
         fallback_col = x_cols[0]
@@ -461,21 +476,59 @@ def plot_landscape_contour(
             top_papers = df_papers.sort_values(by="cited_by_count", ascending=False).head(top_papers_n)
 
         labels = []
+        positions = []
+        used_coords = []
         for _, row in top_papers.iterrows():
             authors_list = parse_authorships(row.get("authorships", ""))
-            first_author = authors_list[0].get("name", "Unknown") if authors_list else "Unknown"
-            last_name = first_author.split()[-1] if first_author != "Unknown" else "Unknown"
-            year = str(row.get("publication_year", ""))[:4]
-            labels.append(f"{last_name} ({year})")
+            first_author = authors_list[0].get("name", "") if authors_list else ""
+            if first_author and first_author.lower() not in ("unknown", "none", ""):
+                last_name = first_author.split()[-1]
+                year = str(row.get("publication_year", ""))[:4]
+                labels.append(f"{last_name} ({year})" if year else last_name)
+            elif "title" in row and pd.notna(row["title"]) and str(row["title"]).strip():
+                raw_title = str(row["title"]).strip()
+                lemma_name = raw_title.split(".")[-1] if "." in raw_title else raw_title
+                labels.append(lemma_name)
+            elif "id" in row and pd.notna(row["id"]) and str(row["id"]).strip():
+                raw_id = str(row["id"]).strip()
+                lemma_name = raw_id.split(".")[-1] if "." in raw_id else raw_id
+                labels.append(lemma_name)
+            else:
+                labels.append("Hub")
+            
+            px_val, py_val = row[x_col], row[y_col]
+            pos = "top center"
+            close_landmark = any(abs(px_val - ux) < 0.007 and abs(py_val - uy) < 0.007 for ux, uy in used_coords)
+            if close_landmark:
+                pos = "bottom center"
+            
+            # Avoid overlap with centroid badges if present
+            if show_regions and terrain.get("centroids"):
+                for _, c_pt in terrain["centroids"].items():
+                    cx, cy = c_pt["x"], c_pt["y"]
+                    if abs(px_val - cx) < 0.016 and abs(py_val - cy) < 0.010:
+                        dx = px_val - cx
+                        dy = py_val - cy
+                        if dx < -0.003:
+                            pos = "bottom left" if dy > 0 else "top left"
+                        elif dx > 0.003:
+                            pos = "bottom right" if dy > 0 else "top right"
+                        elif dy > 0:
+                            pos = "bottom center"
+                        else:
+                            pos = "top center"
+            
+            used_coords.append((px_val, py_val))
+            positions.append(pos)
             
         fig.add_trace(go.Scatter(
             x=top_papers[x_col],
             y=top_papers[y_col],
             mode='markers+text',
-            marker=dict(size=8, color='lightgray', line=dict(width=1, color='black')),
+            marker=dict(size=9, color='white', line=dict(width=1.5, color='black')),
             text=labels,
-            textposition="top center",
-            textfont=dict(color="white", size=12, family="Arial Black"),
+            textposition=positions,
+            textfont=dict(color="white", size=14, family="Times New Roman", weight="bold"),
             name="Relevant Papers",
             showlegend=False,
             hoverinfo='skip',
@@ -494,7 +547,7 @@ def plot_landscape_contour(
                     go.Scatter(
                         x=path["x"], y=path["y"],
                         mode='lines',
-                        line=dict(color="white", width=1.5, dash="dash"),
+                        line=dict(color="white", width=2.0, dash="dash"),
                         name="Domain Regions",
                         showlegend=False,
                         hoverinfo='skip'
@@ -524,11 +577,11 @@ def plot_landscape_contour(
                     x=cx, y=cy,
                     text=display_name,
                     showarrow=False,
-                    font=dict(size=12, color="white", weight="bold"),
-                    bgcolor="rgba(0,0,0,0.3)",
-                    bordercolor="rgba(255,255,255,0.3)",
-                    borderwidth=1,
-                    borderpad=3
+                    font=dict(size=15, color="white", weight="bold", family="Times New Roman"),
+                    bgcolor="rgba(15, 23, 42, 0.85)",
+                    bordercolor="rgba(255, 255, 255, 0.9)",
+                    borderwidth=1.5,
+                    borderpad=5
                 )
 
     # 3. Add Vector Field Overlay
@@ -645,10 +698,10 @@ def _add_manual_legends_2d(fig, df, color_col, symbol_col, label_results=None):
 
             legend_title = color_col
             if color_col == "cluster_domain":
-                legend_title = "Research Domains"
+                legend_title = "Theory Sessions"
 
             fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", 
-                marker=dict(size=8, color=colors[i % len(colors)]),
+                marker=dict(size=11, color=colors[i % len(colors)]),
                 legendgroup="color", legendgrouptitle_text=legend_title, name=name))
 
     if symbol_col and symbol_col in df.columns:

@@ -7,7 +7,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from nltk.corpus import wordnet as wn
+try:
+    from nltk.corpus import wordnet as wn
+except Exception:
+    wn = None
 from wordfreq import top_n_list, zipf_frequency
 
 from edel.providers.base import (

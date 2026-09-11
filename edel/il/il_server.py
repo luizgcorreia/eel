@@ -4,12 +4,27 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from mcp.server.fastmcp import FastMCP, Context
+
+try:
+    from fastmcp import FastMCP, Context
+except (ImportError, ModuleNotFoundError):
+    try:
+        from mcp.server.fastmcp import FastMCP, Context
+    except (ImportError, ModuleNotFoundError):
+        from mcp.server.mcpserver import MCPServer as FastMCP
+        from mcp.server.mcpserver import Context
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env
 load_dotenv()
 
+from edel.il.eel_tools import (
+    ASPECT_DISPLAY,
+    build_expert_system_prompt,
+    format_conditional_transition_result,
+    normalize_aspect_name,
+)
 from edel.il.index import NumpyRAGIndex
 from edel.io.llm import get_llm_client
 
@@ -103,16 +118,18 @@ def format_definition_results(hits: list[dict]) -> str:
 
 
 @mcp.tool(description=(
-    "Search for lemmas semantically similar to a query term or pattern. "
-    "Set aspect='premises' to search by hypotheses/assumptions, "
-    "'skeleton' to search by declarative proof structure/steps (have/show/case), "
-    "'tactics' to search by operational tactics/commands (apply/by), "
-    "'conclusion' to search by the final goal/lemma statement conclusion, "
-    "or 'all' for a hybrid search across all aspects. "
-    "Transitions can be performed by searching on one aspect and reading the others. "
-    "For example, to find what tactics proved a goal: query the goal with aspect='conclusion', "
-    "then read the 'Tactics' field in the returned results. "
-    "Set sort_by_significance=True to bias search results toward widely cited, foundational lemmas. "
+    "Search for lemmas semantically similar to a query term or pattern across EEL aspect spaces.\n"
+    "aspect='premises'       → D(X | Premises): search by hypothesis types.\n"
+    "                          Read 'Skeleton' (Proof Strategy) field → D(Proof-Strategy|Premises)\n"
+    "                          Read 'Tactics' (Tactic Step Map) field → D(Tactic-Map|Premises)\n"
+    "aspect='skeleton'       → D(X | Proof-Strategy): search by proof architecture.\n"
+    "                          Read 'Tactics' → D(Tactic-Map|Proof-Strategy)\n"
+    "aspect='tactics'        → D(X | Tactic-Map): search by operational tactic pattern.\n"
+    "aspect='conclusion'     → D(X | Conclusion): search by final proven statement.\n"
+    "                          Read 'Skeleton' → D(Proof-Strategy|Conclusion)\n"
+    "                          Read 'Tactics' → D(Tactic-Map|Conclusion)\n"
+    "aspect='all'            → Hybrid multi-aspect search.\n\n"
+    "Set sort_by_significance=True to bias search results toward widely cited, foundational lemmas.\n"
     "Set min_dependents=K to filter out obscure helper lemmas with fewer than K direct/transitive dependents."
 ))
 async def search_lemmas(
@@ -164,6 +181,61 @@ async def search_lemmas(
         )
         
     return format_search_results(hits)
+
+
+@mcp.tool(description=(
+    "Execute an EEL conditional transition operator D(return_aspect | search_aspect).\n"
+    "Searches 'search_aspect' space and returns 'return_aspect' content of nearest neighbors.\n\n"
+    "Key uses for Isabelle proof assistance:\n"
+    "  D(Proof-Strategy | Premises):   What proof strategies solved similar hypothesis types?\n"
+    "  D(Tactic-Map | Premises):       What tactic templates + cited deps were used?\n"
+    "  D(Proof-Strategy | Conclusion): What strategies produce similar proven statements?\n"
+    "  D(Tactic-Map | Conclusion):     What tactics closed similar goals? (best for closing moves)\n"
+    "  D(Tactic-Map | Proof-Strategy): What tactics accompany a specific proof architecture?\n\n"
+    "Set chain=True for 2-hop D(Tactic-Map|Proof-Strategy)∘D(Proof-Strategy|Premises):\n"
+    "  Infers proof strategy from your premises, then retrieves tactics calibrated to it.\n"
+    "  This is the most targeted retrieval for 'I know my hypothesis types but not which lemmas to cite'."
+))
+async def conditional_transition(
+    query: str,
+    search_aspect: str = "premises",   # premises | proof-strategy | tactics | conclusion
+    return_aspect: str = "tactics",    # premises | proof-strategy | tactics | conclusion
+    chain: bool = False,
+    max_results: int = 5,
+    min_hop1_score: float = 0.60,
+) -> str:
+    """Execute EEL conditional displacement operator."""
+    client = get_embedding_client()
+    query_emb = client.generate_embedding(query)
+
+    canonical_search = normalize_aspect_name(search_aspect)
+    canonical_return = normalize_aspect_name(return_aspect)
+
+    if chain:
+        hits = index.two_hop_search(
+            query_vector=query_emb,
+            hop1_aspect=canonical_search,
+            hop2_aspect="method",
+            return_aspect=canonical_return,
+            max_results=max_results,
+            min_hop1_score=min_hop1_score,
+        )
+        d_label = f"D({ASPECT_DISPLAY.get(canonical_return, canonical_return)}|Proof-Strategy) ∘ D(Proof-Strategy|{ASPECT_DISPLAY.get(canonical_search, canonical_search)})"
+    else:
+        hits = index.conditional_search(
+            query_vector=query_emb,
+            search_aspect=canonical_search,
+            return_aspect=canonical_return,
+            max_results=max_results,
+        )
+        d_label = f"D({ASPECT_DISPLAY.get(canonical_return, canonical_return)} | {ASPECT_DISPLAY.get(canonical_search, canonical_search)})"
+
+    return format_conditional_transition_result(
+        hits=hits,
+        d_label=d_label,
+        search_aspect=canonical_search,
+        return_aspect=canonical_return,
+    )
 
 
 @mcp.tool(description=(
@@ -354,21 +426,36 @@ async def session_lemmas() -> str:
     return "\n".join(lines)
 
 
-@mcp.prompt(name="il_proof_strategy", description="Instructions on using I/L (Isabelle/Landscape) during a proof session.")
+@mcp.prompt(name="il_proof_strategy", description="Expert guidelines on using I/L conditional displacement operators during an interactive proof session.")
 def il_proof_strategy() -> str:
-    """Provide structured guidelines for using I/L (Isabelle/Landscape)."""
+    """Provide structured expert guidelines for using I/L (Isabelle/Landscape)."""
     return (
-        "You are an Isabelle/Isar assistant. You have access to the I/L (Isabelle/Landscape) vector index, "
-        "which separates lemmas into 4 discourse spaces and definitions into a dedicated Definition Space:\n\n"
-        "1. Premises (aspect='premises'): The assumptions, premises, or hypotheses of a lemma (defaults to 'none' if unconditional).\n"
-        "2. Skeleton (aspect='skeleton'): The declarative Isar proof structure, containing skeleton steps (e.g., have/show/case/proof).\n"
-        "3. Tactics (aspect='tactics'): The operational commands and tactics (e.g., apply/by/simp/auto/blast/metis).\n"
-        "4. Conclusion (aspect='conclusion'): The final goal proposition proved by the lemma.\n\n"
-        "To find proof breakthroughs, use 'discourse transitions' (cross-space querying):\n"
-        "- **Find tactics for a target goal**: Query your target proposition using aspect='conclusion', and read the 'Tactics' and 'Skeleton' fields of the retrieved lemmas.\n"
-        "- **Find lemmas with similar premises**: Query your assumptions/premises using aspect='premises'.\n"
-        "- **Find useful or related definitions for a statement**: Query your statement (or parts of it) using the `search_definitions` tool. This will retrieve definition statements that are semantically close or relevant to your proposition (e.g., to discover definition names, types, or related constructs).\n"
-        "- **Look up dependents**: Definitions include a list of 'dependents' (the names of lemmas in the archive that cite/use this definition), which can guide you to usage examples.\n"
+        "You are an expert Isabelle/Isar assistant — methodical, strategic, and precise.\n"
+        "You have access to the I/L (Isabelle/Landscape) vector index and EEL conditional displacement operators.\n\n"
+        "## Interactive EEL Proof Construction Protocol\n\n"
+        "### Step 0 — Classify the Goal\n"
+        "Analyze the conclusion form (Equation, Implication, Membership, Subset/Order, Existence) and variable types.\n\n"
+        "### Step 1 — Call D(Proof-Strategy | Premises)\n"
+        "Invoke `conditional_transition(query=<premises_and_types>, search_aspect='premises', return_aspect='proof-strategy')`.\n"
+        "Adopt the strategy of the top-ranked analogue:\n"
+        "  - structural-induction     → `apply (induction <var>)`\n"
+        "  - equational-normalization → `simp add: <deps>` or `auto simp: <deps>`\n"
+        "  - resolution-atp           → `by (metis <deps>)`\n"
+        "  - classical-tableau        → `by (blast intro: <deps>)`\n"
+        "  - decision-procedure       → `by linarith` / `by presburger` / `by algebra`\n\n"
+        "### Step 2 — Call D(Tactic-Map | Conclusion)\n"
+        "Invoke `conditional_transition(query=<goal_statement>, search_aspect='conclusion', return_aspect='tactics')`.\n"
+        "Extract cited lemma names from the results and add them to your `simp add:` or `intro:` lemma sets.\n\n"
+        "### Step 3 — Strategy-Calibrated Tactics (2-hop chain)\n"
+        "Invoke `conditional_transition(query=<premises_and_types>, search_aspect='premises', return_aspect='tactics', chain=True)`.\n"
+        "This infers the strategy from your premises and retrieves tactics from other proofs sharing that exact architecture.\n\n"
+        "### Tactic Execution Ladder\n"
+        "1. Structural decomposition (induction / cases)\n"
+        "2. Named lemma citations from Step 2 and 3\n"
+        "3. Augmented automation with cited deps (`auto simp: <deps> intro: <deps>`)\n"
+        "4. Last-resort automation (`by auto` / `by blast`) only when targeted steps fail\n\n"
+        "### Definitions Lookup\n"
+        "Use `search_definitions(query=...)` to retrieve relevant datatype, function, or predicate definitions and their dependents.\n"
     )
 
 

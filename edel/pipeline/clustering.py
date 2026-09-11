@@ -41,48 +41,47 @@ def run_clustering_stage(
         print(f"Running clustering: {name} (source: {source}, algorithm: {algorithm})...")
 
         try:
-            if source == "topic":
-                # Special case for hierarchical topic-based clustering
-                labels = extract_labels_from_topics(out_df)
-                out_df[f"cluster_{name}"] = labels
-                continue
-                
-            # --- NEW CLIPPING LOGIC ---
+            # --- CLIPPING LOGIC ---
             clip_x_min = params.pop("x_min", None)
             clip_x_max = params.pop("x_max", None)
             clip_y_min = params.pop("y_min", None)
             clip_y_max = params.pop("y_max", None)
             
             if any(v is not None for v in [clip_x_min, clip_x_max, clip_y_min, clip_y_max]):
-                if source.startswith("proj_"):
-                    # Determine columns
-                    cols = [c for c in out_df.columns if c.startswith("proj_problem_") and (c.endswith("_x") or c.endswith("_y"))]
-                    if not cols:
-                        cols = [c for c in out_df.columns if c.startswith("proj_") and (c.endswith("_x") or c.endswith("_y"))]
+                # Determine columns
+                cols = [c for c in out_df.columns if c.startswith("proj_problem_") and (c.endswith("_x") or c.endswith("_y"))]
+                if not cols:
+                    cols = [c for c in out_df.columns if c.startswith("proj_") and (c.endswith("_x") or c.endswith("_y"))]
+                
+                if len(cols) >= 2:
+                    x_col, y_col = cols[0], cols[1]
+                    if x_col.endswith("_y"): x_col, y_col = y_col, x_col
                     
-                    if len(cols) >= 2:
-                        x_col, y_col = cols[0], cols[1]
-                        if x_col.endswith("_y"): x_col, y_col = y_col, x_col
-                        
-                        initial_len = len(out_df)
-                        mask = pd.Series(True, index=out_df.index)
-                        if clip_x_min is not None: mask &= (out_df[x_col] >= clip_x_min)
-                        if clip_x_max is not None: mask &= (out_df[x_col] <= clip_x_max)
-                        if clip_y_min is not None: mask &= (out_df[y_col] >= clip_y_min)
-                        if clip_y_max is not None: mask &= (out_df[y_col] <= clip_y_max)
-                        
-                        out_df = out_df[mask.values].copy().reset_index(drop=True)
-                        
-                        dropped = initial_len - len(out_df)
-                        print(f"Clipping applied: dropped {dropped} works outside bounds.")
-                        reports[f"{name}_clip"] = {
-                            "x_min": clip_x_min, "x_max": clip_x_max,
-                            "y_min": clip_y_min, "y_max": clip_y_max,
-                            "initial_size": initial_len,
-                            "final_size": len(out_df),
-                            "dropped": dropped
-                        }
+                    initial_len = len(out_df)
+                    mask = pd.Series(True, index=out_df.index)
+                    if clip_x_min is not None: mask &= (out_df[x_col] >= clip_x_min)
+                    if clip_x_max is not None: mask &= (out_df[x_col] <= clip_x_max)
+                    if clip_y_min is not None: mask &= (out_df[y_col] >= clip_y_min)
+                    if clip_y_max is not None: mask &= (out_df[y_col] <= clip_y_max)
+                    
+                    out_df = out_df[mask.values].copy().reset_index(drop=True)
+                    
+                    dropped = initial_len - len(out_df)
+                    print(f"Clipping applied: dropped {dropped} items outside bounds [{clip_x_min}, {clip_x_max}] x [{clip_y_min}, {clip_y_max}]. Kept {len(out_df)}.")
+                    reports[f"{name}_clip"] = {
+                        "x_min": clip_x_min, "x_max": clip_x_max,
+                        "y_min": clip_y_min, "y_max": clip_y_max,
+                        "initial_size": initial_len,
+                        "final_size": len(out_df),
+                        "dropped": dropped
+                    }
             # --------------------------
+
+            if source == "topic":
+                # Special case for hierarchical topic-based clustering
+                labels = extract_labels_from_topics(out_df)
+                out_df[f"cluster_{name}"] = labels
+                continue
 
             X = get_clustering_matrix(source, out_df, out_field, dimensions)
             if X is None or len(X) == 0:
@@ -166,53 +165,66 @@ def get_clustering_matrix(
 
 
 def extract_labels_from_topics(df: pd.DataFrame) -> List[str]:
-    """Extract the first broad topic (before '/') from the 'topics' column."""
-    if "topics" not in df.columns:
-        print("Warning: 'topics' column missing for topic-based clustering.")
-        return ["No topic"] * len(df)
-        
+    """Extract the first broad topic (before '/') from the 'topics' column,
+    or fallback to session / theory if topics are absent or uninformative.
+    """
     labels = []
-    for val in df["topics"]:
-        try:
-            # 1. Handle nulls safely (avoid pd.isna on arrays)
-            if val is None:
-                labels.append("No topic")
-                continue
-                
-            import numpy as np
-            topic = None
-            
-            # 2. Extract first topic from collection or string
-            if isinstance(val, (list, np.ndarray)):
-                if len(val) > 0:
-                    topic = str(val[0])
-                else:
-                    labels.append("No topic")
-                    continue
-            else:
-                s = str(val).strip()
-                if not s or s == "nan" or s == "None" or s == "[]":
+    if "topics" in df.columns:
+        for val in df["topics"]:
+            try:
+                # 1. Handle nulls safely (avoid pd.isna on arrays)
+                if val is None:
                     labels.append("No topic")
                     continue
                     
-                import re
-                found = re.findall(r"['\"](.*?)['\"]", s)
-                if found:
-                    topic = found[0]
-                else:
-                    topic = s.replace("[", "").replace("]", "").strip()
-            
-            if not topic:
-                labels.append("No topic")
-                continue
+                import numpy as np
+                topic = None
                 
-            # 3. Extract broad category and clean artifacts
-            broad = topic.split("/")[0].strip()
-            broad = broad.replace("'", "").replace('"', "").replace("[", "").replace("]", "").strip()
-            
-            labels.append(broad if broad else "No topic")
-        except Exception:
-            labels.append("No topic")
+                # 2. Extract first topic from collection or string
+                if isinstance(val, (list, np.ndarray)):
+                    if len(val) > 0:
+                        topic = str(val[0])
+                    else:
+                        labels.append("No topic")
+                        continue
+                else:
+                    s = str(val).strip()
+                    if not s or s == "nan" or s == "None" or s == "[]":
+                        labels.append("No topic")
+                        continue
+                        
+                    import re
+                    found = re.findall(r"['\"](.*?)['\"]", s)
+                    if found:
+                        topic = found[0]
+                    else:
+                        topic = s.replace("[", "").replace("]", "").strip()
+                
+                if not topic:
+                    labels.append("No topic")
+                    continue
+                    
+                # 3. Extract broad category and clean artifacts
+                broad = topic.split("/")[0].strip()
+                broad = broad.replace("'", "").replace('"', "").replace("[", "").replace("]", "").strip()
+                
+                labels.append(broad if broad else "No topic")
+            except Exception:
+                labels.append("No topic")
+    else:
+        labels = ["No topic"] * len(df)
+        
+    # If all labels ended up as "No topic", fallback to session or theory or id
+    if all(l == "No topic" for l in labels) and len(df) > 0:
+        if "session" in df.columns and not df["session"].isna().all():
+            print("Notice: Topic classification not found; using session as domain clusters.")
+            return df["session"].fillna("No topic").astype(str).tolist()
+        elif "theory" in df.columns and not df["theory"].isna().all():
+            print("Notice: Topic classification not found; using theory prefix as domain clusters.")
+            return [str(t).split(".")[0] if "." in str(t) else str(t) for t in df["theory"]]
+        elif "id" in df.columns:
+            print("Notice: Topic classification not found; using ID prefix as domain clusters.")
+            return [str(i).split(".")[0] if "." in str(i) else str(i) for i in df["id"]]
             
     return labels
 

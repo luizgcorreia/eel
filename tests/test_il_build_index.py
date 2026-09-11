@@ -108,9 +108,10 @@ def test_aspect_parsing_rules():
     p, c = parse('lemma foo: assumes "A" shows "B"')
     assert p == "A" and c == "B"
 
-    # 1c. shows "A ⟹ B" — previously broken, now fixed
+    # 1c. shows "A ⟹ B" — preserves fixes annotations and inner premises
     p, c = parse('lemma sq: fixes e :: real shows "e > 0 ⟹ ∃d. 0 < d"')
-    assert p == "e > 0" and c == "∃d. 0 < d"
+    assert "fixes e :: real" in p and "e > 0" in p
+    assert c == "∃d. 0 < d"
 
     # 1d. ⟦A; B⟧ ⟹ C bracket form
     p, c = parse('lemma foo: "⟦A; B⟧ ⟹ C"')
@@ -162,7 +163,7 @@ def test_aspect_parsing_rules():
 
 
 def test_simplex_collapse_rules():
-    """Verify simplex collapse in extract_aspects across all proof structural types."""
+    """Verify aspect extraction and non-degeneracy across all proof structural types."""
     from edel.il.aspects import extract_aspects
 
     def make_lemma(statement, proof="", skeleton=None, tactics=None):
@@ -174,7 +175,7 @@ def test_simplex_collapse_rules():
             "text_comments": [],
         }
 
-    # ── Full Isar (3-simplex): skeleton ≠ tactics ──────────────────────────
+    # ── Full Isar: skeleton ≠ tactics ─────────────────────────────────────
     lemma = make_lemma(
         'lemma foo: "A ⟹ B"',
         proof='proof\n  have "A" by auto\n  then show "B" by blast\nqed',
@@ -185,7 +186,7 @@ def test_simplex_collapse_rules():
     assert r["aspect_strategy"] != r["aspect_dependencies"], "Full Isar: M should ≠ F"
     assert r["aspect_statement"] != r["aspect_context"], "Full Isar: P should ≠ I"
 
-    # ── Rule M1: tactic-only (2-simplex, M=F) ──────────────────────────────
+    # ── Tactic-only: non-degenerate (M has strategy signature, F has step map) ─
     lemma = make_lemma(
         'lemma foo: "A ⟹ B"',
         proof="by simp",
@@ -193,10 +194,12 @@ def test_simplex_collapse_rules():
         tactics=["by simp"],
     )
     r = extract_aspects(lemma)
-    assert r["aspect_strategy"] == r["aspect_dependencies"] == "by simp", \
-        "Rule M1: tactic-only proof should collapse M=F=tactics"
+    # Method is strategy signature, dependencies is step map
+    assert "equational-normalization" in r["aspect_strategy"]
+    assert "by simp" in r["aspect_dependencies"]
+    assert r["aspect_strategy"] != r["aspect_dependencies"], "M should not collapse to F"
 
-    # ── Rule M2: skeleton-only (2-simplex, M=F) ────────────────────────────
+    # ── Isar structural proof: M has roadmap, F has step map ────────────────
     lemma = make_lemma(
         'lemma foo: "A ⟹ B"',
         proof="proof\n  show B by done\nqed",
@@ -204,9 +207,9 @@ def test_simplex_collapse_rules():
         tactics=[],
     )
     r = extract_aspects(lemma)
-    assert r["aspect_strategy"] == r["aspect_dependencies"], \
-        "Rule M2: skeleton-only proof should collapse M=F=skeleton"
-    assert "proof" in r["aspect_strategy"]
+    assert "proof" in r["aspect_strategy"] and "qed" in r["aspect_strategy"]
+    assert len(r["aspect_dependencies"]) > 0
+    assert r["aspect_strategy"] != r["aspect_dependencies"]
 
     # ── Rule M3: no proof content (M=F=I collapse) ─────────────────────────
     lemma = make_lemma(

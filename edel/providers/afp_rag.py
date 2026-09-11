@@ -38,7 +38,7 @@ def generate_dataset(config: dict) -> tuple[pd.DataFrame, dict]:
     
     # Save original metadata fields to restore them after ensure_schema
     original_cols = {}
-    for col in ["theory", "file", "line", "proof_text", "statement_text"]:
+    for col in ["session", "theory", "file", "line", "proof_text", "statement_text"]:
         if col in df.columns:
             original_cols[col] = df[col].copy()
             
@@ -68,6 +68,13 @@ def generate_dataset(config: dict) -> tuple[pd.DataFrame, dict]:
     # 3. Fill schema requirements
     # 'id' is required and should be unique. We use the qualified title of the lemma.
     df["id"] = df["title"]
+    # Session and topics for domain clustering
+    if "session" not in df.columns:
+        df["session"] = df["title"].apply(lambda t: str(t).split(".")[0] if "." in str(t) else "Isabelle")
+    df["topics"] = df["session"].apply(lambda s: [str(s)] if s else ["Isabelle"])
+    original_cols["session"] = df["session"].copy()
+    original_cols["topics"] = df["topics"].copy()
+
     # 'abstract_text' is required. Concatenate the four aspects (separated by newlines) to match structured abstract task
     def build_abstract(row):
         parts = []

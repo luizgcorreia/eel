@@ -165,3 +165,28 @@ async def test_il_proof_strategy_prompt(mock_index_and_client):
     assert "search_definitions" in res
     assert "dependents" in res
 
+
+@pytest.mark.anyio
+async def test_conditional_transition(mock_index_and_client):
+    idx, _ = mock_index_and_client
+    # 1-hop
+    res = await il_server.conditional_transition(
+        query="test query",
+        search_aspect="premises",
+        return_aspect="tactics",
+        chain=False,
+    )
+    assert "EEL CONDITIONAL TRANSITION" in res
+    assert "HOL.List.append_Nil" in res
+
+    # 2-hop chain
+    res_chain = await il_server.conditional_transition(
+        query="test query",
+        search_aspect="premises",
+        return_aspect="tactics",
+        chain=True,
+        min_hop1_score=0.5,
+    )
+    assert "EEL CONDITIONAL TRANSITION" in res_chain
+    assert "HOL.List.append_Nil" in res_chain
+

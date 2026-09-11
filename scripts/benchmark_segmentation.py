@@ -210,12 +210,17 @@ def benchmark_theories(
                 "session": session,
                 "theory": lemma["theory"],
                 "keyword": lemma["keyword"],
+                "locale": lemma.get("locale", ""),
+                "context_scope": lemma.get("context_scope", "global"),
+                "attributes": lemma.get("attributes", []),
+                "rule_type": lemma.get("rule_type", "general_theorem"),
                 "problem": aspects["aspect_statement"],
                 "method": aspects["aspect_strategy"],
                 "finding": aspects["aspect_dependencies"],
                 "interpretation": aspects["aspect_context"],
                 "proof_text": lemma["proof_text"],
                 "statement_text": lemma["statement_text"],
+                "proof_steps": lemma.get("proof_steps", []),
                 "cited_deps": _extract_dependencies(lemma["proof_text"]),
                 "dependents": "none",
                 "file": lemma["file"],
@@ -231,7 +236,6 @@ def benchmark_theories(
         stat = {
             "session": session,
             "theory": theory,
-            "segments_count": len(segments),
             "units_count": len(lemmas),
             "lemmas_count": lemma_count,
             "definitions_count": def_count,
@@ -245,53 +249,53 @@ def benchmark_theories(
         theory_stats.append(stat)
 
         print(
-            f"  [Processed] {theory:<40} | Units: {len(lemmas):>3} "
-            f"(Lemmas: {lemma_count:>3}, Defs: {def_count:>2}, Isar: {isar_count:>2}) | "
+            f"    [Theory {stat['units_count']:>3} units | {stat['isar_proofs_count']:>2} Isar, {stat['tactic_proofs_count']:>2} tactic] "
             f"Time: {t_total*1000:>6.1f}ms (fetch: {t_fetch*1000:>5.1f}ms, parse: {t_parse*1000:>4.1f}ms, aspects: {t_aspects*1000:>4.1f}ms)"
         )
 
     return theory_stats, all_records
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Isabelle Session Segmentation Benchmarking")
-    parser.add_argument("--isabelle", default="/home/jmena/Isabelle2025-2/bin/isabelle", help="Path to isabelle binary")
-    parser.add_argument("--afp-dir", default="/home/jmena/lcorreia/eel/external/afp-2025-2/thys", help="Path to AFP thys/")
-    parser.add_argument("--output-dir", default="artifacts/segmentation_benchmarks", help="Output directory")
-    parser.add_argument("--sessions", nargs="+", default=["HOL-Library", "AVL-Trees", "Aho_Corasick", "Featherweight_OCL"], help="Sessions to benchmark")
-    parser.add_argument("--max-theories-per-session", type=int, default=15, help="Max theories to benchmark per session (0 = all)")
-    args = parser.parse_args()
+def run_benchmarks(args):
+    print("=" * 70)
+    print("  I/L EXPERT-ORIENTED ASPECT BENCHMARK & AFP EXTRAPOLATION SUITE")
+    print("=" * 70)
 
-    out_path = Path(args.output_dir)
+    out_path = Path(args.output)
     out_path.mkdir(parents=True, exist_ok=True)
-    metadata_parser = AFPMetadataParser()
+
+    metadata_dir = Path(args.afp_dir).parent / "metadata" / "entries" if (Path(args.afp_dir).parent / "metadata" / "entries").exists() else None
+    metadata_parser = AFPMetadataParser(metadata_dir)
 
     all_benchmarks = []
     all_extracted_records = []
 
-    print("=" * 80)
-    print("ISABELLE / LANDSCAPE (I/L) SEGMENTATION BENCHMARKING")
-    print(f"Target Sessions: {args.sessions}")
-    print("=" * 80)
-
     t_global_start = time.time()
 
     for session in args.sessions:
-        print(f"\n>>> Benchmarking Session: {session}")
+        print(f"\n[+] Starting REPL daemon for session '{session}'...")
         try:
-            with SessionReplContext(args.isabelle, args.afp_dir, session, port=9151) as client:
+            with SessionReplContext(args.isabelle, args.afp_dir, session, port=args.port, token=args.token) as client:
                 raw_theories = client.send("Ir.theories ();")
-                all_thys = [t.strip() for t in raw_theories.splitlines() if t.strip()]
+                all_thys = [
+                    t.strip() for t in raw_theories.splitlines()
+                    if t.strip() and not t.strip().startswith("*") and not t.strip().startswith("(") and not t.strip().startswith("[")
+                ]
 
-                # Filter session-specific theories
+                # Filter session theories of interest
                 if session == "HOL-Library":
-                    session_thys = [t for t in all_thys if t.startswith("HOL-Library.")]
+                    session_thys = [
+                        t for t in all_thys
+                        if t.startswith("HOL-Library.")
+                        and any(k in t for k in ["Multiset", "Tree", "Big_O"])
+                        and not t.endswith("_Test")
+                    ]
                 elif session == "AVL-Trees":
-                    session_thys = [t for t in all_thys if t.startswith("AVL-Trees.") or "AVL" in t]
+                    session_thys = [t for t in all_thys if "AVL" in t]
                 elif session == "Aho_Corasick":
-                    session_thys = [t for t in all_thys if t.startswith("Aho_Corasick.") or t.startswith("Trie.")]
+                    session_thys = [t for t in all_thys if "Aho_Corasick" in t]
                 elif session == "Featherweight_OCL":
-                    session_thys = [t for t in all_thys if t.startswith("Featherweight_OCL.")]
+                    session_thys = [t for t in all_thys if "Featherweight_OCL." in t and any(k in t for k in ["UML_", "Core_init"])]
                 else:
                     session_thys = [t for t in all_thys if t.startswith(f"{session}.")]
 
@@ -309,25 +313,31 @@ def main():
                 if args.max_theories_per_session > 0:
                     sorted_thys = sorted_thys[:args.max_theories_per_session]
 
-                print(f"Selected {len(sorted_thys)} theories for session '{session}':")
+                print(f"  Found {len(sorted_thys)} target theories to benchmark in '{session}':")
                 for st in sorted_thys[:6]:
-                    print(f"  - {st}")
+                    print(f"    - {st}")
                 if len(sorted_thys) > 6:
-                    print(f"  ... and {len(sorted_thys)-6} more.")
+                    print(f"    ... and {len(sorted_thys)-6} more.")
 
-                stats, records = benchmark_theories(client, session, sorted_thys, metadata_parser)
+                stats, records = benchmark_theories(
+                    client,
+                    session,
+                    sorted_thys,
+                    metadata_parser,
+                )
                 all_benchmarks.extend(stats)
                 all_extracted_records.extend(records)
-
         except Exception as e:
-            print(f"[ERROR] Failed to process session '{session}': {e}")
-
-    # Post-process definition dependencies
-    t_dep_0 = time.perf_counter()
-    compute_definition_dependencies(all_extracted_records)
-    t_dep = time.perf_counter() - t_dep_0
+            print(f"  [ERROR] Failed benchmarking session '{session}': {e}")
+            import traceback
+            traceback.print_exc()
+            continue
 
     total_time = time.time() - t_global_start
+
+    # Post-process definition dependencies across all units
+    print(f"\n[+] Computing definition dependencies across {len(all_extracted_records)} units...")
+    compute_definition_dependencies(all_extracted_records)
 
     # Save benchmark dataframe
     df_bench = pd.DataFrame(all_benchmarks)
@@ -345,15 +355,14 @@ def main():
     # Save qualitative samples (Markdown)
     sample_md_file = out_path / "qualitative_segmentation_samples.md"
     with open(sample_md_file, "w") as f:
-        f.write("# I/L Qualitative Segmentation Analysis Samples\n\n")
-        f.write("This document showcases real Isabelle lemmas and definitions extracted and partitioned into the four epistemic aspects:\n\n")
+        f.write("# I/L Qualitative Segmentation Analysis Samples (Expert Model)\n\n")
+        f.write("Showcases real Isabelle lemmas and definitions extracted and partitioned into the four expert epistemic aspects:\n\n")
 
-        # Select diverse samples: 2 from Multiset, 2 from AVL, 2 from Aho_Corasick, 2 from Featherweight_OCL
         sample_sessions = ["HOL-Library", "AVL-Trees", "Aho_Corasick", "Featherweight_OCL"]
         for s in sample_sessions:
             s_recs = [r for r in all_extracted_records if r["session"] == s]
-            # Pick one with Isar proof, one definition
-            isar_recs = [r for r in s_recs if "proof" in r.get("proof_text", "") and len(r.get("method", "")) > 40]
+            isar_recs = [r for r in s_recs if "proof" in r.get("proof_text", "") and len(r.get("method", "")) > 30]
+            tactic_recs = [r for r in s_recs if ("apply" in r.get("proof_text", "") or r.get("proof_text", "").startswith("by")) and "proof" not in r.get("proof_text", "")]
             def_recs = [r for r in s_recs if r.get("keyword") in ["definition", "fun", "primrec"]]
 
             f.write(f"## Session: `{s}`\n\n")
@@ -363,24 +372,46 @@ def main():
                 f.write(f"### [Definition] `{d['title']}` ({d['theory']})\n\n")
                 f.write(f"- **Keyword:** `{d['keyword']}`\n")
                 f.write(f"- **Location:** `{d['file']}:{d['line']}`\n")
+                f.write(f"- **Locale / Context:** `{d.get('locale') or 'global'}`\n")
                 f.write(f"- **Dependents (Lemmas that cite this):** {d.get('dependents', 'none')}\n\n")
                 f.write("```isabelle\n" + d["statement_text"].strip() + "\n```\n\n")
 
             if isar_recs:
                 l = isar_recs[0]
-                f.write(f"### [Isar Lemma] `{l['title']}` ({l['theory']})\n\n")
+                f.write(f"### [Structured Isar Lemma] `{l['title']}` ({l['theory']})\n\n")
                 f.write(f"- **Keyword:** `{l['keyword']}`\n")
+                f.write(f"- **Rule Type:** `{l.get('rule_type', 'general_theorem')}`\n")
+                f.write(f"- **Attributes:** `{l.get('attributes', [])}`\n")
+                f.write(f"- **Locale / Context:** `{l.get('locale') or 'global'}`\n")
                 f.write(f"- **Location:** `{l['file']}:{l['line']}`\n\n")
-                f.write("#### Aspect 1: Problem (Formal Statement)\n")
+                f.write("#### Aspect 1: Problem (Premises / Hypotheses / Fixes)\n")
                 f.write("```isabelle\n" + l["problem"].strip() + "\n```\n\n")
-                f.write("#### Aspect 2: Method (Isar Proof Skeleton & Deductive Steps)\n")
+                f.write("#### Aspect 2: Method (Proof Architecture & Strategic Roadmap)\n")
                 f.write("```isabelle\n" + l["method"].strip() + "\n```\n\n")
-                f.write("#### Aspect 3: Finding (Dependencies & Operational Tactics)\n")
+                f.write("#### Aspect 3: Finding (Coupled Step Map & Execution Content)\n")
                 f.write(f"- **Cited Dependencies:** `{l['cited_deps']}`\n")
                 f.write("```isabelle\n" + l["finding"].strip() + "\n```\n\n")
-                if l["interpretation"]:
-                    f.write("#### Aspect 4: Interpretation (Context & Narrative Comments)\n")
-                    f.write(f"> {l['interpretation']}\n\n")
+                f.write("#### Aspect 4: Interpretation (Conclusion / Consequent & Attributes)\n")
+                f.write("```isabelle\n" + l["interpretation"].strip() + "\n```\n\n")
+                f.write("---\n\n")
+
+            if tactic_recs:
+                t = tactic_recs[0]
+                f.write(f"### [Procedural / Tactic Lemma] `{t['title']}` ({t['theory']})\n\n")
+                f.write(f"- **Keyword:** `{t['keyword']}`\n")
+                f.write(f"- **Rule Type:** `{t.get('rule_type', 'general_theorem')}`\n")
+                f.write(f"- **Attributes:** `{t.get('attributes', [])}`\n")
+                f.write(f"- **Locale / Context:** `{t.get('locale') or 'global'}`\n")
+                f.write(f"- **Location:** `{t['file']}:{t['line']}`\n\n")
+                f.write("#### Aspect 1: Problem (Premises / Hypotheses / Fixes)\n")
+                f.write("```isabelle\n" + t["problem"].strip() + "\n```\n\n")
+                f.write("#### Aspect 2: Method (Proof Architecture & Strategic Roadmap)\n")
+                f.write("```isabelle\n" + t["method"].strip() + "\n```\n\n")
+                f.write("#### Aspect 3: Finding (Coupled Step Map & Execution Content)\n")
+                f.write(f"- **Cited Dependencies:** `{t['cited_deps']}`\n")
+                f.write("```isabelle\n" + t["finding"].strip() + "\n```\n\n")
+                f.write("#### Aspect 4: Interpretation (Conclusion / Consequent & Attributes)\n")
+                f.write("```isabelle\n" + t["interpretation"].strip() + "\n```\n\n")
                 f.write("---\n\n")
 
     # Generate Statistical Summary & Extrapolation
@@ -394,6 +425,17 @@ def main():
     avg_time_per_thy = df_bench["t_total_sec"].mean()
     med_time_per_thy = df_bench["t_total_sec"].median()
     avg_time_per_unit = (df_bench["t_total_sec"].sum() / total_units) * 1000 if total_units > 0 else 0
+
+    # Aspect Emptiness Audit
+    empty_p = sum(1 for r in all_extracted_records if not r.get("problem", "").strip())
+    empty_m = sum(1 for r in all_extracted_records if not r.get("method", "").strip())
+    empty_f = sum(1 for r in all_extracted_records if not r.get("finding", "").strip())
+    empty_i = sum(1 for r in all_extracted_records if not r.get("interpretation", "").strip())
+
+    pct_empty_p = (empty_p / total_units * 100) if total_units > 0 else 0
+    pct_empty_m = (empty_m / total_units * 100) if total_units > 0 else 0
+    pct_empty_f = (empty_f / total_units * 100) if total_units > 0 else 0
+    pct_empty_i = (empty_i / total_units * 100) if total_units > 0 else 0
 
     # AFP Extrapolation: 1,098 sessions in AFP 2025-2
     # Empirical average theories per session ~6.5 to 7 (estimated ~7,200 total theories)
@@ -409,6 +451,13 @@ def main():
         f.write(f"- **Total Theories Processed:** {total_theories}\n")
         f.write(f"- **Total Units Extracted:** {total_units} ({total_lemmas} lemmas, {total_defs} definitions)\n")
         f.write(f"- **Proof Styles:** {total_isar} structured Isar proofs, {total_tactic} tactic-style proofs\n\n")
+        f.write("## Aspect Completeness Audit (Expert Model vs Legacy Model)\n\n")
+        f.write("| Aspect | Field Role | Empty Count | Emptiness Rate | Status |\n")
+        f.write("| :--- | :--- | :--- | :--- | :--- |\n")
+        f.write(f"| **Aspect 1: Problem** | Premises, Hypotheses & Fixes | {empty_p} / {total_units} | {pct_empty_p:.1f}% | {'✅ RESOLVED' if pct_empty_p == 0 else '⚠️ WARN'} |\n")
+        f.write(f"| **Aspect 2: Method** | Proof Architecture & Strategy Roadmap | {empty_m} / {total_units} | {pct_empty_m:.1f}% | {'✅ RESOLVED' if pct_empty_m == 0 else '⚠️ WARN'} |\n")
+        f.write(f"| **Aspect 3: Finding** | Coupled Step Map & Execution Content | {empty_f} / {total_units} | {pct_empty_f:.1f}% | {'✅ RESOLVED' if pct_empty_f == 0 else '⚠️ WARN'} |\n")
+        f.write(f"| **Aspect 4: Interpretation** | Conclusion, Consequent & Attributes | {empty_i} / {total_units} | {pct_empty_i:.1f}% | {'✅ RESOLVED' if pct_empty_i == 0 else '⚠️ WARN'} |\n\n")
         f.write("## Timing & Throughput Benchmarks\n\n")
         f.write(f"- **Average Time per Theory:** {avg_time_per_thy*1000:.1f} ms\n")
         f.write(f"- **Median Time per Theory:** {med_time_per_thy*1000:.1f} ms\n")
@@ -433,6 +482,10 @@ def main():
     print(f"Total Theories Processed: {total_theories}")
     print(f"Total Units Ingested:     {total_units} ({total_lemmas} lemmas, {total_defs} definitions)")
     print(f"Isar vs Tactic Proofs:    {total_isar} Isar / {total_tactic} Tactic")
+    print(f"Aspect 1 (Problem):       {empty_p} empty ({pct_empty_p:.1f}%)")
+    print(f"Aspect 2 (Method):        {empty_m} empty ({pct_empty_m:.1f}%)")
+    print(f"Aspect 3 (Finding):       {empty_f} empty ({pct_empty_f:.1f}%)")
+    print(f"Aspect 4 (Interpretation):{empty_i} empty ({pct_empty_i:.1f}%)")
     print(f"Average Time / Theory:    {avg_time_per_thy*1000:.1f} ms")
     print(f"Throughput:               {total_theories / df_bench['t_total_sec'].sum():.1f} theories/sec ({total_units / df_bench['t_total_sec'].sum():.1f} lemmas/sec)")
     print(f"Estimated Whole AFP Time: {est_total_afp_hours*60:.1f} minutes ({est_total_afp_hours:.2f} hours)")
@@ -440,5 +493,64 @@ def main():
     print(f"Reports saved in: {out_path}")
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Benchmark Isabelle session segmentation in I/L.")
+    parser.add_argument("--isabelle", default=None, help="Path to Isabelle binary")
+    parser.add_argument("--afp-dir", default=None, help="Path to AFP thys directory")
+    parser.add_argument(
+        "--sessions",
+        nargs="+",
+        default=["HOL-Library", "AVL-Trees", "Aho_Corasick", "Featherweight_OCL"],
+        help="Sessions to benchmark",
+    )
+    parser.add_argument(
+        "--max-theories-per-session",
+        type=int,
+        default=0,
+        help="Max theories per session to evaluate (0 for all target theories)",
+    )
+    parser.add_argument(
+        "--output",
+        default="artifacts/segmentation_benchmarks",
+        help="Output directory for benchmark artifacts",
+    )
+    parser.add_argument("--port", type=int, default=9151, help="Port for REPL daemon")
+    parser.add_argument("--token", default="il_bench_token_xyz", help="REPL auth token")
+
+    args = parser.parse_args()
+
+    # Auto-resolve isabelle binary path if not provided
+    if not args.isabelle:
+        candidates = [
+            os.path.expanduser("~/Isabelle2025-2/bin/isabelle"),
+            "/home/correia/Isabelle2025-2/bin/isabelle",
+            "/home/jmena/Isabelle2025-2/bin/isabelle",
+        ]
+        for cand in candidates:
+            if os.path.exists(cand):
+                args.isabelle = cand
+                break
+        if not args.isabelle:
+            args.isabelle = "isabelle"
+
+    # Auto-resolve AFP thys directory if not provided
+    if not args.afp_dir:
+        candidates = [
+            str(Path(__file__).resolve().parent.parent / "external" / "afp-2025-2" / "thys"),
+            os.path.expanduser("~/lcorreia/eel/external/afp-2025-2/thys"),
+            "/home/correia/edel/external/afp-2025-2/thys",
+            "/home/jmena/lcorreia/eel/external/afp-2025-2/thys",
+        ]
+        for cand in candidates:
+            if os.path.exists(cand):
+                args.afp_dir = cand
+                break
+        if not args.afp_dir:
+            args.afp_dir = "external/afp-2025-2/thys"
+
+    run_benchmarks(args)
+
+
 if __name__ == "__main__":
     main()
+
