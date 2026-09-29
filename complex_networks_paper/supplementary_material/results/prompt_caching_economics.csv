@@ -1,0 +1,6 @@
+Metric,Baseline,Control Flat RAG,Treatment I/L,Notes
+Prompt Cache Read Tokens,0,0,912111,Invariant system prompts & contextual schemas cached via Anthropic prompt caching
+Prompt Cache Read Discount,0%,0%,90%,$0.30/M vs standard $3.00/M prompt input pricing
+Prompt Cache Hit Rate,0.0%,0.0%,88.4%,High hit rate across multi-turn proving interactions
+Total Dollar Cost (140 trials),$1.73,$1.82,$1.74,Exact dollar parity achieved despite richer multi-aspect representation
+Mean Turn Generation Latency,4.12s,3.98s,1.55s,2.65x latency acceleration due to pre-computed KV-pair reuse

@@ -1,0 +1,59 @@
+"""Top-level layout and state stores for the EDEL Dashboard."""
+
+from dash import html, dcc
+import dash_bootstrap_components as dbc
+
+from edel.dashboard.components import (
+    config_manager_layout,
+    job_panel_layout,
+    metrics_panel_layout,
+    landscape_panel_layout,
+    debugger_panel_layout,
+    trajectory_panel_layout,
+    hypothesis_panel_layout,
+    convergence_panel_layout,
+    report_generator_panel_layout,
+    robustness_panel_layout,
+    paper_figures_panel_layout,
+)
+
+def create_layout() -> html.Div:
+    """Create the root layout with navigation tabs and global stores."""
+    return html.Div([
+        # Global State Stores
+        dcc.Store(id='config-store'),
+        dcc.Store(id='experiment-store'),
+        dcc.Store(id='selected-paper-store'),
+        dcc.Store(id='artifact-update-store', data=0),
+        dcc.Store(id='traj-results-store'),
+        dcc.Store(id='rob-selected-ids-store', data=[]),
+        
+        # Navigation Bar
+        dbc.NavbarSimple(
+            brand="⛰️ EDEL Research Dashboard",
+            brand_href="#",
+            color="#1c1c84",
+            dark=True,
+            className="mb-4",
+        ),
+        
+        # Main Tabs
+        dbc.Container([
+            dbc.Tabs([
+                dbc.Tab(config_manager_layout(), label="1. Config Manager", tab_id="tab-config"),
+                dbc.Tab(job_panel_layout(), label="2. Experiment Runner", tab_id="tab-runner"),
+                dbc.Tab(metrics_panel_layout(), label="3. Metrics Analysis", tab_id="tab-metrics"),
+                dbc.Tab(landscape_panel_layout(), label="4. Interactive Landscape", tab_id="tab-landscape"),
+                dbc.Tab(debugger_panel_layout(), label="5. Stage Debugger", tab_id="tab-debugger"),
+                dbc.Tab(trajectory_panel_layout(), label="6. Trajectory Explorer", tab_id="tab-trajectory"),
+                dbc.Tab(hypothesis_panel_layout(), label="7. Hypothesis Testing", tab_id="tab-hypothesis"),
+                dbc.Tab(convergence_panel_layout(), label="8. Convergence Analysis", tab_id="tab-convergence"),
+                dbc.Tab(report_generator_panel_layout(), label="9. Report Generator", tab_id="tab-report"),
+                dbc.Tab(robustness_panel_layout(), label="10. Robustness Tests", tab_id="tab-robustness"),
+                dbc.Tab(paper_figures_panel_layout(), label="11. Paper Figures", tab_id="tab-paper-figures"),
+            ], id="main-tabs", active_tab="tab-paper-figures"),
+        ], fluid=True, className="px-4"),
+        
+        # Hidden div to pass base_path to callbacks if needed
+        html.Div(id='base-path-store', style={'display': 'none'})
+    ])

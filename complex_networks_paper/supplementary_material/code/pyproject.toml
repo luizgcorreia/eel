@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eel"
+version = "1.0.0"
+description = "EEL: Embedding-driven Epistemic Landscapes for Formal Proof Libraries (Isabelle/Landscape)"
+readme = "README.md"
+authors = [
+    { name = "Luiz G. Correia", email = "luiz.gabriel@ufabc.edu.br" },
+    { name = "Jesus P. Mena-Chalco", email = "jesus.mena@ufabc.edu.br" },
+    { name = "Ronaldo Menezes", email = "r.menezes@exeter.ac.uk" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "scikit-learn>=1.2",
+    "pyarrow>=14.0",
+    "voyageai>=0.2.0",
+    "anthropic>=0.20",
+    "mcp>=1.0",
+    "fastmcp>=0.1",
+    "python-dotenv",
+    "openpyxl>=3.1",
+    "tqdm>=4.65"
+]
+
+[tool.setuptools.packages.find]
+include = ["edel*"]

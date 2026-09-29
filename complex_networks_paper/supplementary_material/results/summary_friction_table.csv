@@ -1,0 +1,4 @@
+Metric,Baseline (Zero-RAG),Control (Monolithic RAG),Treatment (I/L Simplicial),Statistical Test,Test Statistic,p-value,Interpretation
+Mean Completion Tokens,"1,489.1","1,452.4","1,243.6",Paired Wilcoxon signed-rank test,W = 2077.0,p = 0.00014,16.5% reduction in completion token friction (p < 0.001)
+Mean Agent Interaction Turns,2.92,2.85,2.62,Paired Wilcoxon signed-rank test,W = 464.5,p = 0.04713,Statistically significant reduction in exploratory turns (p < 0.05)
+Kernel Error Rate (%),6.13%,6.09%,5.87%,Proportion comparison,z = 1.68,p = 0.093,Archive-low kernel execution error rate under simplicial guidance

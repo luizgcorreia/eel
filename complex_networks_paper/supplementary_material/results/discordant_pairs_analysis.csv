@@ -1,0 +1,7 @@
+Discordant Category,Count,Description
+Treatment Wins (b),8,Theorems failed by Control Flat RAG but successfully closed by Treatment I/L
+Control Wins (c),4,Theorems closed by Control Flat RAG but failed by Treatment I/L
+Tied - Both Succeeded (a),70,Theorems solved by both Treatment and Control
+Tied - Both Failed (d),58,Theorems failed by both Treatment and Control
+Empirical Odds Ratio (b/c),2.00x,2:1 advantage favoring Higher-Order Simplicial Navigation
+Bayesian Posterior Probability,84.8%,"Posterior probability that Treatment strictly dominates Control (10,000 bootstrap runs)"

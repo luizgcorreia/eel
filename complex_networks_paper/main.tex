@@ -10,6 +10,29 @@
 \usepackage{url}
 \def\UrlFont{\rmfamily}
 \providecommand{\orcidID}[1]{\unskip}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\definecolor{isarblue}{HTML}{003366}
+\definecolor{isargreen}{HTML}{006633}
+\definecolor{isargray}{HTML}{555555}
+
+\lstdefinelanguage{isabelle}{%
+  keywords=[1]{lemma,theorem,corollary,proposition,definition,fun,primrec,function,datatype,type_synonym,proof,qed,by,apply,done,next},
+  keywordstyle=[1]\bfseries\color{isarblue},
+  keywords=[2]{fixes,assumes,shows,where,and,obtains},
+  keywordstyle=[2]\bfseries\color{isargreen},
+  keywords=[3]{simp,auto,blast,fastforce,force,metis,induction,induct,cases,rule,subst},
+  keywordstyle=[3]\color{isarblue},
+  sensitive=true,
+  morecomment=[s]{(*}{*)},
+  commentstyle=\itshape\color{isargray},
+  stringstyle=\color{black},
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  tabsize=2,
+  columns=flexible,
+}
 
 \setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
 \setlength{\floatsep}{6pt plus 2pt minus 2pt}
@@ -19,12 +42,12 @@
 \renewenvironment{thebibliography}[1]
      {\section*{\refname}%
       \def\@biblabel##1{##1.}%
-      \footnotesize
+      \scriptsize
       \list{\@biblabel{\@arabic\c@enumiv}}%
            {\settowidth\labelwidth{\@biblabel{#1}}%
             \leftmargin\labelwidth
             \advance\leftmargin\labelsep
-            \setlength{\itemsep}{0.5pt}%
+            \setlength{\itemsep}{0.2pt}%
             \setlength{\parsep}{0pt}%
             \usecounter{enumiv}%
             \let\p@enumiv\@empty
@@ -40,12 +63,12 @@
 \begin{document}
 \mainmatter
 
-\title{Higher-Order Epistemic Navigation of the Archive of Formal Proofs}
-\titlerunning{Higher-Order Epistemic Navigation of the AFP}
+\title{Higher-Order Epistemic Networks for Navigating the Archive of Formal Proofs}
+\titlerunning{Higher-Order Epistemic Networks for Navigating the AFP}
 
 \author{Luiz G. Correia\inst{1}\orcidID{0000-0002-2721-4274} \and
-Jesus P. Mena-Chalco\inst{1}\orcidID{0000-0001-7509-5532} \and
-Ronaldo Menezes\inst{2}\orcidID{0000-0003-2475-4709}}
+Ronaldo Menezes\inst{2}\orcidID{0000-0003-2475-4709} \and
+Jes\'us P. Mena-Chalco\inst{1}\orcidID{0000-0001-7509-5532}}
 
 \authorrunning{L. G. Correia et al.}
 
@@ -58,7 +81,7 @@ Department of Computer Science, University of Exeter, Exeter, UK\\
 \maketitle
 
 \begin{abstract}
-Formal proof libraries such as the Archive of Formal Proofs (AFP) for Isabelle/HOL define complex networks of verified mathematics. AutoCorrode enables LLMs to synthesise Isabelle proofs directly, while tools like IsabeLLM and IsaSearch introduce flat RAG over unpartitioned text or pairwise citations, suffering from search distraction and context exhaustion. Drawing on higher-order networks, we model formal libraries as an Embedding-driven Epistemic Landscape (EEL): each theorem is an epistemic 3-simplex in $\mathbb{R}^d$ across premises ($P$), proof methods ($M$), formal steps ($F$), and implications ($I$). Network navigation uses twelve conditional transition operators $D(Y|x)$ and topological Landscape Height centrality over the citation DAG. We implement I/L (Isabelle/\allowbreak Landscape) as an MCP server extending AutoCorrode. Across 140 Isabelle/HOL theorems, simplicial navigation achieves a 2:1 discordant odds ratio over monolithic RAG and reduces token use by 16.5\% ($W = 2077.0,\, p = 0.00014$).
+Formal proof libraries such as the Archive of Formal Proofs (AFP) for Isabelle/HOL form directed networks of machine-verified logical relations. Existing provers rely on flat retrieval over unpartitioned text or pairwise citations, causing search distraction and context exhaustion. Drawing on higher-order networks, we model formal libraries as Embedding-driven Epistemic Landscapes (EEL), representing theorems as 3-simplices across premises ($P$), proof methods ($M$), formal steps ($F$), and implications ($I$). Navigation uses twelve conditional transition operators $D(Y|x)$ and Landscape Height centrality over the citation DAG. We implement I/L (Isabelle/\allowbreak Landscape) as an MCP server extending the Isabelle Assistant subsystem of AutoCorrode. Across 140 Isabelle/HOL theorems, simplicial navigation achieves a 2:1 discordant odds ratio over monolithic RAG, reducing token use by 16.5\% ($W = 2077.0,\, p = 0.00014$). These results indicate that higher-order structure can reduce search overhead while preserving, and modestly improving, proof-solving performance.
 \keywords{Higher-Order Networks, Epistemic Landscapes, Theorem Proving, Isabelle, Archive of Formal Proofs.}
 \end{abstract}
 
@@ -77,7 +100,7 @@ In interactive theorem proving, recent systems mirror the flaws of pairwise back
 
 \medskip\noindent\textbf{IsabeLLM}~\cite{jones_isabellm_2026} implements automated theorem proving in Isabelle by combining LLM generation with Retrieval-Augmented Generation (RAG). \emph{IsabeLLM} retrieves top-$k$ nearest lemmas from vector databases and injects their raw formal text into the prompt. Crucially, Jones and Knottenbelt~\cite{jones_isabellm_2026} explicitly report that flat monolithic RAG breaks down on multi-theory verifications because injecting uncurated proof text rapidly exhausts the model's context window. They conclude that dynamic tool-use and modular interfaces (such as the Model Context Protocol) represent an urgent, unfulfilled requirement for neural theorem proving.
 
-\medskip\noindent\textbf{AutoCorrode.} This requirement is already partially addressed by \textbf{AutoCorrode}~\cite{AutoCorrode}, an open-source software verification framework from AWS Labs that wraps Isabelle/HOL in a suite of MCP-compatible servers. AutoCorrode provides two of the three servers in our ecosystem: the \textbf{I/R} (Isabelle/REPL) server, offering a headless Poly/ML REPL interface for fast speculative tactic execution, and the \textbf{I/Q} (Isabelle/Query) server, enabling real-time buffer inspection in the PIDE editor environment. The naming convention I/L (Isabelle/Landscape) directly follows AutoCorrode's established pattern. Our central contribution is the \textbf{I/L server}: a new, third MCP server that extends AutoCorrode with higher-order simplicial retrieval over the EEL complex of the AFP.
+\medskip\noindent\textbf{AutoCorrode and Isabelle Assistant.} This requirement is partially addressed by the open-source \textbf{AutoCorrode}~\cite{AutoCorrode} repository (AWS Labs). While AutoCorrode is primarily an automated framework for verifying Rust and C programs in Isabelle/HOL, its companion \textbf{Isabelle Assistant} subsystem wraps Isabelle/HOL in a suite of MCP-compatible servers. Isabelle Assistant contributes two of the three servers in our ecosystem: the \textbf{I/R} (Isabelle/REPL) server, offering a headless Poly/ML REPL interface for fast speculative tactic execution, and the \textbf{I/Q} (Isabelle/Query) server, enabling buffer inspection in the PIDE editor environment. The naming convention I/L (Isabelle/Landscape) directly follows this pattern. Our central contribution is the \textbf{I/L server}: a new, third MCP server that extends this ecosystem with higher-order simplicial retrieval over the EEL complex of the AFP.
 
 \begin{figure}[t!]
 \centering
@@ -195,7 +218,7 @@ Simplicial complexes have previously been applied in the science of science to s
 \begin{enumerate}
     \item \textbf{EEL Instantiation for Isabelle/AFP:} Building on the EEL framework~\cite{correia_eel_inprep,correia_embedding-based_2026}, which defines generic $P, M, F, I$ epistemic aspects and conditional transition operators $D(Y|x)$ for scientific discourse, we provide an \textbf{Isabelle/\allowbreak HOL-native reinterpretation} of the four aspects. In this setting, $P$ encodes type constraints and locale hypotheses (premises), $M$ the strategic proof roadmap (proof methods), $F$ coupled tactical step maps (formal steps), and $I$ the consequent with its automation directives (implications). From these aspects, we interpret the \textbf{conditional transition operators} as \textbf{Generalised Gluing Operators}, assembling individual 3-simplices into a higher-order epistemic network and formalising a simplicial complex that can be explored by agentic systems.
     \item \textbf{Topological Centrality via Landscape Height ($H$):} We define Landscape Height on the transpose citation graph $G^T$ to measure the downstream deductive cone of theorems, formulating a fused ranking function that suppresses ephemeral leaf lemmas.
-    \item \textbf{I/L: Extending AutoCorrode with Simplicial RAG \& Large-Scale Evaluation:} We implement \textbf{I/L} (Isabelle/Landscape) as a new MCP server extending \textbf{AutoCorrode}~\cite{AutoCorrode}, which already provides the I/R (REPL) and I/Q (Query) servers. I/L adds the EEL simplicial index to this ecosystem, coordinating with I/R and I/Q to resolve the context exhaustion bottleneck identified in \emph{IsabeLLM}. In a paired live benchmark of 140 formal theorems, the I/L-extended ecosystem achieves a 2:1 discordant odds ratio over monolithic RAG, reduces completion token expenditure by 16.5\% ($p = 0.00014$), and discharges deep structural proofs from the AFP.
+    \item \textbf{I/L: Extending Isabelle Assistant with Simplicial RAG \& Large-Scale Evaluation:} We implement \textbf{I/L} (Isabelle/Landscape) as a new MCP server extending the Isabelle Assistant subsystem within \textbf{AutoCorrode}~\cite{AutoCorrode}, which provides the I/R (REPL) and I/Q (Query) servers. I/L adds the EEL simplicial index to this ecosystem, coordinating with I/R and I/Q to resolve the context exhaustion bottleneck identified in \emph{IsabeLLM}. In a paired live benchmark of 140 formal theorems, the I/L-extended ecosystem achieves a 2:1 discordant odds ratio over monolithic RAG, reduces completion token expenditure by 16.5\% ($p = 0.00014$), and discharges deep structural proofs from the AFP.
 \end{enumerate}
 
 \section{Embedding-Driven Epistemic Landscapes for the AFP}\label{sec:eel_afp}
@@ -219,14 +242,14 @@ Dense embeddings of formal code exhibit severe anisotropy: frequent outer syntax
 \end{equation}
 where $\mathbf{u}_i$ are eigenvectors of the corpus covariance matrix $\Sigma = \frac{1}{N}\sum_{j=1}^N \mathbf{x}_j \mathbf{x}_j^T$. To establish the threshold, we swept $k \in [0, 100]$ over 1,924 benchmark theorems: the domain cluster silhouette score surges from $S_{\text{domain}} = 0.191$ at $k=0$ to $+0.521$ at $k=5$, remaining robust at $+0.439$ at $k=10$ ($41.0\%$ variance removed). Beyond $k=10$, mathematical semantics are progressively stripped alongside syntax (domain separation collapses for $k \ge 15$; isotropic noise at $k \ge 40$). We therefore adopt $k=10$ as the robust operating baseline (full sweep data are in the Supplementary Material).
 
-The role of I/L's aspect segmentation engine is to parse each proving approach in the AFP into its four constituent aspect coordinates $(P, M, F, I)$ for embedding and indexing. To illustrate, consider a representative lemma from \texttt{AVL-Trees.AVL}:
-\begin{verbatim}
+The role of I/L's aspect segmentation engine is to parse each proving approach in the AFP into its four constituent aspect coordinates $(P, M, F, I)$ for embedding and indexing. To illustrate, consider a representative lemma from \texttt{AVL-Trees.AVL}~\cite{Nipkow-AFP-AVL_Trees}:
+\begin{lstlisting}[language=isabelle]
 lemma avl_insert [simp, intro]:
   fixes x :: "'a :: linorder"
   shows "avl t ==> avl (insert x t)"
   by (induction t rule: avl.induct)
      (auto simp: avl.simps height_insert)
-\end{verbatim}
+\end{lstlisting}
 
 \noindent Our parser extracts the four coordinates as follows:
 \begin{enumerate}
@@ -240,7 +263,7 @@ lemma avl_insert [simp, intro]:
     \texttt{avl (insert x t); [simp, intro]; theory: AVL-Trees}.
 \end{enumerate}
 
-A key engineering challenge is that $\approx\!80\%$ of AFP proofs are procedural apply-scripts or one-liners (\texttt{by simp}, \texttt{by blast}), which would leave the Strategy aspect empty under a na\"ive Isar keyword parser. We resolve this by grounding strategy extraction in proof-engineering semantics: each tactic paradigm maps to a canonical descriptor (\emph{structural-induction}, \emph{equational-normalisation}, \emph{classical-tableau}, etc.), ensuring all aspects are populated so that every theorem forms a \textbf{3-simplex}. For each artefact $j$ we define the \textbf{Epistemic Expansion Vector} $\Delta_E(j) = \mathbf{i}_j - \mathbf{p}_j$ and its norm $N(j) = \|\mathbf{i}_j - \mathbf{p}_j\|$, which quantifies the deductive distance bridged by the proof. Aspect 3 models fine-grained tactical dependencies as \textbf{Coupled Step Maps} $\text{Step}_k = \langle \text{Claim}_k, \text{Tactic}_k, \text{CitedDeps}_k \rangle$. To prevent vector-space degeneracy from short code strings (the \emph{token starvation problem}), every aspect is wrapped in a structured semantic envelope encoding theory name, locale scope, rule category, and type signatures prior to embedding.
+A key engineering challenge is that $\approx\!80\%$ of AFP proofs are procedural apply-scripts or one-liners (\texttt{by simp}, \texttt{by blast}), which would leave the Strategy aspect empty under a na\"ive Isar keyword parser. We resolve this by grounding strategy extraction in proof-engineering semantics: each tactic paradigm maps to a canonical descriptor (\emph{structural-induction}, \emph{equational-normalisation}, \emph{classical-tableau}, etc.), ensuring all aspects are populated so that every theorem forms a \textbf{3-simplex}. While user-defined tactic abstractions (e.g., composite methods defined via Eisbach or ML \texttt{method\_setup}) currently map to canonical automated descriptors, our parser captures all standard Isar paradigms. For each artefact $j$ we define the \textbf{Epistemic Expansion Vector} $\Delta_E(j) = \mathbf{i}_j - \mathbf{p}_j$ and its norm $N(j) = \|\mathbf{i}_j - \mathbf{p}_j\|$, which quantifies the deductive distance bridged by the proof. Aspect 3 models fine-grained tactical dependencies as \textbf{Coupled Step Maps} $\text{Step}_k = \langle \text{Claim}_k, \text{Tactic}_k, \text{CitedDeps}_k \rangle$. To prevent vector-space degeneracy from short code strings (the \emph{token starvation problem}), every aspect is wrapped in a structured semantic envelope encoding theory name, locale scope, rule category, and type signatures prior to embedding.
 
 \subsection{Transition Operators, Gluing, and Landscape Height}\label{sec:operators}
 
@@ -267,7 +290,8 @@ $H(v)$ measures the size of the downstream deductive cone supported by lemma $v$
 \end{equation}
 where $S_{\text{simplicial}}(L)$ is the similarity computed via the active transition operator $D(Y | x)$, $C$ is the candidate set, and $\lambda = 0.15$.
 
-For visualisation of the mapped space, we construct a continuous 2D epistemic landscape by computing diffusion coordinates $\boldsymbol{\psi} = (\psi_1, \psi_2)$ over the anisotropy-filtered representations and interpolating Landscape Height $H(v)$ as an elevation surface (Fig.~\ref{fig:landscape_terrain_2d}). The resulting topography forms epistemic basins radiating from central algebraic hubs (e.g., \texttt{true}, \texttt{false}, \texttt{StrongEq}). This geometric structure directly explains why conventional flat RAG fails on formal verification: nearest-neighbour search on raw vectors is dominated by the top syntactic components, trapping retrieval in peripheral lexical distractors. Conversely, simplicial transition operators ($D(M \mid p)$) guided by Landscape Height filter out syntactic noise and navigate directly along the deductive ridges of the landscape.
+For visualisation of the mapped space, we construct a continuous 2D epistemic landscape by computing diffusion coordinates $\boldsymbol{\psi} = (\psi_1, \psi_2)$ over the anisotropy-filtered representations and interpolating Landscape Height $H(v)$ as an elevation surface (Fig.~\ref{fig:landscape_terrain_2d}). The resulting topography forms epistemic basins radiating from central algebraic hubs (e.g., \texttt{true}, \texttt{false}, \texttt{StrongEq}). This geometric structure provides a plausible mechanism for the retrieval failures observed with flat RAG in our benchmark:
+nearest-neighbour search on raw vectors is dominated by the top syntactic components, trapping retrieval in peripheral lexical distractors. Conversely, simplicial transition operators ($D(M \mid p)$) guided by Landscape Height filter out syntactic noise and navigate directly along the deductive ridges of the landscape.
 
 \begin{figure}[t!]
 \centering
@@ -278,7 +302,7 @@ For visualisation of the mapped space, we construct a continuous 2D epistemic la
 
 \section{Multi-Agent System Architecture: The I/L Ecosystem}\label{sec:architecture}
 
-\noindent To resolve context exhaustion and search distraction in \emph{IsabeLLM}~\cite{jones_isabellm_2026}, our framework decouples reasoning, topological retrieval, and formal execution into three coordinated Model Context Protocol (MCP) servers (Fig.~\ref{fig:overview}c). Rather than implementing an ad-hoc monolithic harness, we build upon \textbf{AutoCorrode}~\cite{AutoCorrode} (AWS Labs), which exposes Isabelle/HOL natively through the MCP standard. AutoCorrode provides two foundational servers: the \textbf{I/R Server} (Isabelle/REPL), which connects via TCP to a headless Poly/ML process running pre-warmed session heaps for rapid speculative tactic execution ($\le 100$\,ms per step), and the \textbf{I/Q Server} (Isabelle/Query), which embeds inside the jEdit/\allowbreak PIDE editor environment~\cite{wenzel_asynchronous_2014} for buffer inspection and human-in-the-loop synchronisation. We introduce the \textbf{I/L Server} (Isabelle/\allowbreak Landscape) as the third MCP server, adding higher-order simplicial navigation over a two-tier index (a static pre-compiled AFP index alongside a live session cache) that exposes transition queries $D(Y \mid x)$ and Landscape Height centrality $H(v)$.
+\noindent To resolve context exhaustion and search distraction in \emph{IsabeLLM}~\cite{jones_isabellm_2026}, our framework decouples reasoning, topological retrieval, and formal execution into three coordinated Model Context Protocol (MCP) servers (Fig.~\ref{fig:overview}c). Rather than implementing an ad-hoc monolithic harness, we build upon the MCP toolchain within AWS Labs' \textbf{AutoCorrode}~\cite{AutoCorrode} repository—specifically its \textbf{Isabelle Assistant} integration, which exposes Isabelle/HOL natively through the MCP standard. Isabelle Assistant provides two foundational servers: the \textbf{I/R Server} (Isabelle/REPL), which connects via TCP to a headless Poly/ML process running pre-warmed session heaps for rapid speculative tactic execution ($\le 100$\,ms per step), and the \textbf{I/Q Server} (Isabelle/Query), which embeds inside the jEdit/\allowbreak PIDE editor environment~\cite{wenzel_asynchronous_2014} for buffer inspection and human-in-the-loop synchronisation. We introduce the \textbf{I/L Server} (Isabelle/\allowbreak Landscape) as the third MCP server, adding higher-order simplicial navigation over a two-tier index (a static pre-compiled AFP index alongside a live session cache) that exposes transition queries $D(Y \mid x)$ and Landscape Height centrality $H(v)$.
 
 \medskip\noindent On observing an open subgoal $p \in \mathcal{G}$, the agent queries I/L using operator $D(M \mid p)$ with filter $H(L) \ge 2$, retrieving an epistemic proof dossier partitioned into strategic hypotheses ($D(M \mid p)$), conclusion closing lemmas ($D(F \mid i)$), and strategy-calibrated tactic maps ($D(F \mid m) \circ D(M \mid p)$). Rather than flooding the context with uncurated text, the system prompt instructs the agent to align its global reasoning with the retrieved strategy descriptors, extract relevant lemma dependencies from the tactic maps, and sample continuations across the epistemic complex: $m^* \sim D(M \mid p)$, $f^* \sim D(F \mid m^*)$, and $i^* \sim D(I \mid f^*)$, synthesising candidate 3-simplex $\sigma^* = (p, m^*, f^*, i^*)$. Crucially, the agent is guided to execute candidate tactics speculatively in I/R, ensuring that epistemic valuation $\mathcal{V} : \mathcal{S} \times \mathcal{G} \to \{0, 1\}$ is externally grounded in the Isabelle kernel via Poly/ML before transitions attach to the proof script.
 
@@ -297,7 +321,7 @@ We constructed a stratified benchmark of \textbf{140 formal Isabelle/HOL theorem
     \item \textbf{Inductive Proofs (45 lemmas):} Requiring structural induction schemes and multi-case decompositions.
     \item \textbf{Structural / Multi-Step Proofs (15 lemmas):} Complex declarative proofs involving nested calculations.
     \item \textbf{Deep HOL-Library (20 lemmas):} Theorems drawn from foundational theories (\texttt{Multiset}, \texttt{Complex\_Main}) requiring non-trivial lemma chaining.
-    \item \textbf{Deep Pure AFP (20 lemmas):} Heavy structural theorems from the AFP (specifically \texttt{Featherweight\_OCL}), where 30\% of lemmas were subjected to out-of-distribution $\alpha$-renamings to eliminate LLM training memorisation.
+    \item \textbf{Deep Pure AFP (20 lemmas):} Heavy structural theorems drawn from classic and recent AFP entries: \texttt{Featherweight\_OCL}~\cite{Brucker-AFP-Featherweight_OCL} (2014), \texttt{AVL-Trees}~\cite{Nipkow-AFP-AVL_Trees} (2004), and \texttt{Aho\_Corasick}~\cite{Ramos-AFP-Aho_Corasick} (2026), with 30\% of lemmas perturbed via out-of-distribution $\alpha$-renamings to eliminate memorisation.
 \end{enumerate}
 Across these 140 theorems, we conducted \textbf{420 paired live trials} using Claude Sonnet 5 across three experimental arms: (1)~\textbf{Baseline (Zero-RAG)}, where the agent interacts with I/R using raw internal pretraining weights without library retrieval; (2)~\textbf{Control (Monolithic Flat RAG)}, where the agent queries a flat vector index similar to \emph{IsabeLLM}~\cite{jones_isabellm_2026} using unpartitioned proposition text; and (3)~\textbf{Treatment (I/L Simplicial Navigation)}, coordinating I/L, I/R, and I/Q via 4-aspect transition operators $D(Y | x)$ and Landscape Height centrality. All arms were evaluated under an identical harness imposing a strict ceiling of \textbf{15 interaction turns} and a \textbf{100,000-token budget} (at most 512 completion tokens per turn); any trial failing to discharge all subgoals within these limits was logged as a failure.
 
@@ -352,9 +376,11 @@ A common concern in multi-aspect representations is the potential overhead of ma
 \enlargethispage{2\baselineskip}
 \section{Conclusion and Future Work}\label{sec:conclusion}
 
-In this paper, we demonstrated that formal mathematical libraries such as the Archive of Formal Proofs are natural higher-order complex networks. Instantiating the EEL framework~\cite{correia_eel_inprep,correia_embedding-based_2026} in the Isabelle/HOL setting, we provided an Isabelle-native reinterpretation of the four epistemic aspects and established that every AFP entry forms a 3-simplex in a shared embedding space. We presented the conditional transition operators $D(Y | x)$ as Generalised Gluing Operators assembling the higher-order epistemic simplicial complex of the archive. Governed by twelve asymmetric operators and Landscape Height centrality $H(v)$, simplicial navigation successfully suppresses search distraction and cognitive friction ($p = 0.00014$), achieving a 2:1 discordant odds ratio over monolithic flat RAG.
+In this paper, we demonstrated that formal mathematical libraries such as the Archive of Formal Proofs are natural higher-order complex networks. Instantiating the EEL framework~\cite{correia_embedding-based_2026,correia_eel_inprep} in the Isabelle/HOL setting, we provided an Isabelle-native reinterpretation of the four epistemic aspects and established that every AFP entry forms a 3-simplex in a shared embedding space. We presented the conditional transition operators $D(Y | x)$ as Generalised Gluing Operators assembling the higher-order epistemic simplicial complex of the archive. Governed by twelve asymmetric operators and Landscape Height centrality $H(v)$, simplicial navigation successfully suppresses search distraction and cognitive friction ($p = 0.00014$), achieving a 2:1 discordant odds ratio over monolithic flat RAG.
 
-\medskip\noindent\textbf{Limitations and Future Work.} Our evaluation is necessarily bounded in scope: it benchmarks 140 theorems across four representative sessions, focusing primarily on single-target proof horizons within bounded turn budgets. Several critical directions remain. First, we are scaling continuous index construction to the entire AFP (all 1,026 sessions and $>200,000$ theorems). Second, future benchmarks will evaluate extended, multi-phase proofs that require bridging multiple distant theories across disparate mathematical domains. Finally, we plan to examine dynamic session trajectories where agents prove and register intermediate helper lemmas via \texttt{store\_lemma}, updating the active simplicial complex in real time and successfully retrieving this synthesised local context to close subsequent global goals. Furthermore, the EEL of the AFP can be explored by multi-agent collectives collaborating to share intermediate lemmas via \texttt{store\_lemma}, opening promising directions for automated mathematics with simulated research communities.
+\medskip\noindent\textbf{Limitations and Future Work.} Our evaluation is necessarily bounded in scope: it benchmarks 140 theorems across four representative sessions, focusing primarily on single-target proof horizons within bounded turn budgets. Several critical directions remain. First, we are scaling continuous index construction to the entire AFP (all 1,026 sessions and $>200,000$ theorems). Second, while our parser maps standard Isar paradigms, resolving user-defined composite tactics (e.g., via Eisbach or ML \texttt{method\_setup}) into primitive components via dynamic PIDE introspection represents an appealing avenue to avoid syntactic blurring. Third, simplicial navigation naturally complements automated provers such as \textbf{Sledgehammer}~\cite{blanchette_hammering_2016} (accessible via I/R's REPL): while I/L navigates the epistemic landscape to orchestrate multi-step inductive roadmaps, Sledgehammer can serve as an accelerated terminal oracle on leaf subgoals. Finally, we plan to examine dynamic session trajectories where multi-agent collectives share intermediate lemmas via \texttt{store\_lemma}, opening promising directions for automated mathematics with simulated research communities.
+
+\medskip\noindent\textbf{Supplementary Material.} Replication code, benchmark datasets, vector indices, trial logs, and extended figures are available at \url{https://doi.org/10.6084/m9.figshare.33717277}.
 
 \begin{footnotesize}
 \bibliographystyle{spmpsci}

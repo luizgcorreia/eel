@@ -1,0 +1,4 @@
+Experimental Arm,Tier 1: Terminal (N=40),Tier 2: Inductive (N=45),Tier 3: Structural (N=15),Tier 4: Deep HOL (N=20),Tier 5: Deep AFP (N=20),Overall Pass@1 (N=140)
+Baseline (Zero-RAG),87.5% (35/40),55.6% (25/45),33.3% (5/15),30.0% (6/20),20.0% (4/20),53.6% (75/140)
+Control (Monolithic Flat RAG),87.5% (35/40),53.3% (24/45),33.3% (5/15),30.0% (6/20),20.0% (4/20),52.9% (74/140)
+Treatment (I/L Simplicial Navigation),87.5% (35/40),57.8% (26/45),40.0% (6/15),35.0% (7/20),20.0% (4/20),55.7% (78/140)
