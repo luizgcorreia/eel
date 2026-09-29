@@ -69,8 +69,8 @@ def test_ingest_session_lemmas(monkeypatch):
     assert df_lemma["problem"].iloc[0] == "my_definition A = A"
     # interpretation is conclusion
     assert df_lemma["interpretation"].iloc[0] == "my_definition A = A"
-    # method is skeleton (tactic-only proof collapses to tactics)
-    assert "by (simp add: my_definition_def)" in df_lemma["method"].iloc[0]
+    # method is abstract strategy
+    assert "equational-normalization" in df_lemma["method"].iloc[0]
     # finding is tactics
     assert "by (simp add: my_definition_def)" in df_lemma["finding"].iloc[0]
     assert df_lemma["theory"].iloc[0] == "MockSession.TestTheory"

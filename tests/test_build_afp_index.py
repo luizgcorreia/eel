@@ -175,11 +175,15 @@ def test_build_afp_index_calculate_missing_embeddings_resume(tmp_path, monkeypat
 def test_build_afp_index_token_failure(tmp_path, monkeypatch):
     # Mock sessions to run
     monkeypatch.setattr(build_afp_index, "get_afp_sessions", lambda x: ["TestSession"])
-    monkeypatch.setattr(build_afp_index, "build_session_heap", lambda *a: True)
+    monkeypatch.setattr(build_afp_index, "build_session_heap", lambda *a, **kw: True)
+    
+    # Mock socket to immediately report connected port
+    mock_sock = MagicMock()
+    monkeypatch.setattr(build_afp_index.socket, "socket", lambda *a, **kw: mock_sock)
     
     # Mock subprocess.Popen to return a mock process whose stdout is empty (no token retrieved)
     mock_proc = MagicMock()
-    mock_proc.stdout.readline.return_value = b""
+    mock_proc.stdout = []
     monkeypatch.setattr(build_afp_index.subprocess, "Popen", lambda *a, **kw: mock_proc)
     
     # Set args
@@ -190,22 +194,29 @@ def test_build_afp_index_token_failure(tmp_path, monkeypatch):
     ]
     
     with patch("sys.argv", test_args):
-        with pytest.raises(SystemExit) as exc_info:
-            build_afp_index.main()
-        assert exc_info.value.code == 1
+        build_afp_index.main()
+
+    # Index should be empty since session failed token acquisition
+    index = NumpyRAGIndex()
+    if (tmp_path / "metadata.parquet").exists():
+        index.load(tmp_path)
+    assert len(index.metadata) == 0
 
 
 def test_build_afp_index_ingestion_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(build_afp_index, "get_afp_sessions", lambda x: ["TestSession"])
-    monkeypatch.setattr(build_afp_index, "build_session_heap", lambda *a: True)
+    monkeypatch.setattr(build_afp_index, "build_session_heap", lambda *a, **kw: True)
+    
+    # Mock socket and EphemeralReplClient
+    mock_sock = MagicMock()
+    monkeypatch.setattr(build_afp_index.socket, "socket", lambda *a, **kw: mock_sock)
+    monkeypatch.setattr(build_afp_index, "EphemeralReplClient", MagicMock())
     
     # Mock Popen to return a valid token line
     mock_proc = MagicMock()
-    # First readline returns the token log, second returns empty
-    mock_proc.stdout.readline.side_effect = [
-        b"IR_Repl.token: secret_token_123\n",
-        "● REPL ready. Waiting for connections on 127.0.0.1:9147\n".encode("utf-8"),
-        b""
+    mock_proc.stdout = [
+        "IR_Repl.token: secret_token_123\n",
+        "● REPL ready. Waiting for connections on 127.0.0.1:9147\n",
     ]
     monkeypatch.setattr(build_afp_index.subprocess, "Popen", lambda *a, **kw: mock_proc)
     
@@ -222,9 +233,13 @@ def test_build_afp_index_ingestion_failure(tmp_path, monkeypatch):
         "--skip-embedding",
     ]
     with patch("sys.argv", test_args):
-        with pytest.raises(SystemExit) as exc_info:
-            build_afp_index.main()
-        assert exc_info.value.code == 1
+        build_afp_index.main()
+
+    # Index should be empty since session ingestion failed
+    index = NumpyRAGIndex()
+    if (tmp_path / "metadata.parquet").exists():
+        index.load(tmp_path)
+    assert len(index.metadata) == 0
 
 
 def test_build_afp_index_include_hol_and_deduplicate(tmp_path, monkeypatch):
@@ -240,14 +255,18 @@ def test_build_afp_index_include_hol_and_deduplicate(tmp_path, monkeypatch):
     
     # 2. Mock session/heap helper functions
     monkeypatch.setattr(build_afp_index, "get_afp_sessions", lambda x: ["TestSession"])
-    monkeypatch.setattr(build_afp_index, "build_session_heap", lambda *a: True)
+    monkeypatch.setattr(build_afp_index, "build_session_heap", lambda *a, **kw: True)
+    
+    # Mock socket and EphemeralReplClient
+    mock_sock = MagicMock()
+    monkeypatch.setattr(build_afp_index.socket, "socket", lambda *a, **kw: mock_sock)
+    monkeypatch.setattr(build_afp_index, "EphemeralReplClient", MagicMock())
     
     # Mock Popen to return valid token
     mock_proc = MagicMock()
-    mock_proc.stdout.readline.side_effect = [
-        b"IR_Repl.token: secret_token_123\n",
-        "● REPL ready. Waiting for connections on 127.0.0.1:9147\n".encode("utf-8"),
-        b""
+    mock_proc.stdout = [
+        "IR_Repl.token: secret_token_123\n",
+        "● REPL ready. Waiting for connections on 127.0.0.1:9147\n",
     ]
     monkeypatch.setattr(build_afp_index.subprocess, "Popen", lambda *a, **kw: mock_proc)
     

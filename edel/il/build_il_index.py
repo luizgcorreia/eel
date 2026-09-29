@@ -27,24 +27,33 @@ def main():
     parser.add_argument("--provider", default="openai", choices=["openai", "voyage"], help="Embedding provider")
     parser.add_argument("--model", default="text-embedding-3-large", help="Embedding model name")
     parser.add_argument("--skip-embedding", "--skip-embeddings", dest="skip_embedding", action="store_true", help="Skip embedding stage (for debugging segments/metadata)")
+    parser.add_argument("--ingest-backend", default=os.getenv("IL_INGEST_BACKEND", "ir"), choices=["ir", "pide"], help="Ingestion backend ('ir' or 'pide')")
+    parser.add_argument("--session", default="", help="Session name when ingesting via PIDE (e.g. Featherweight_OCL)")
+    parser.add_argument("--threads", type=int, default=int(os.getenv("IL_INDEX_THREADS", "16")), help="Parallel threads for PIDE ingestion")
     
     args = parser.parse_args()
     
-    token = args.token or os.getenv("IR_AUTH_TOKEN", "")
-    if not token:
-        print("Error: Authentication token not provided. Use --token or set IR_AUTH_TOKEN.")
-        sys.exit(1)
-        
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 1. Ingest aspects from running I/R session
-    df = ingest_session_lemmas(
-        host=args.host,
-        port=args.port,
-        token=token,
-        theory_filter=args.filter
-    )
+    # 1. Ingest aspects from chosen backend
+    if args.ingest_backend == "pide":
+        print(f"Ingesting theories via PIDE backend (threads: {args.threads})...")
+        from edel.il.ingest_interface import get_theory_ingester
+        ingester = get_theory_ingester("pide", threads=args.threads)
+        df = ingester.ingest_session(session=args.session or (args.filter or ""), pattern=args.filter)
+    else:
+        token = args.token or os.getenv("IR_AUTH_TOKEN", "")
+        if not token:
+            print("Error: Authentication token not provided. Use --token or set IR_AUTH_TOKEN.")
+            sys.exit(1)
+        # Preserve direct call to ingest_session_lemmas for 100% test compatibility
+        df = ingest_session_lemmas(
+            host=args.host,
+            port=args.port,
+            token=token,
+            theory_filter=args.filter
+        )
     
     if len(df) == 0:
         print("No lemmas found to embed. Exiting.")

@@ -238,12 +238,41 @@ def _parse_obtains(stmt: str) -> tuple[str, str]:
     return interpretation, interpretation
 
 
+def normalize_isabelle_symbols(text: str) -> str:
+    r"""Normalize Isabelle ASCII escape symbols (\<Longrightarrow>, \<lbrakk>, etc.) to canonical symbols."""
+    replacements = [
+        (r"\<lbrakk>", "⟦"),
+        (r"\<rbrakk>", "⟧"),
+        (r"\<Longrightarrow>", "⟹"),
+        (r"\<longleftrightarrow>", "⟷"),
+        (r"\<longrightarrow>", "⟶"),
+        (r"\<equiv>", "≡"),
+        (r"\<le>", "≤"),
+        (r"\<ge>", "≥"),
+        (r"\<and>", "∧"),
+        (r"\<or>", "∨"),
+        (r"\<not>", "¬"),
+        (r"\<noteq>", "≠"),
+        (r"\<in>", "∈"),
+        (r"\<notin>", "∉"),
+        (r"\<subseteq>", "⊆"),
+        (r"\<forall>", "∀"),
+        (r"\<exists>", "∃"),
+        (r"\<And>", "⋀"),
+        (r"\<lambda>", "λ"),
+        (r"\<tau>", "τ"),
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
+    return text
+
+
 def _parse_premises_and_conclusion(statement: str, attributes: list[str] | None = None) -> tuple[str, str]:
     """Parse a lemma/theorem statement to extract premises and conclusion.
 
     Preserves `fixes` variable annotations, eigenvariables `⋀`, and sort constraints.
     """
-    stmt = re.sub(r"\s+", " ", statement).strip()
+    stmt = normalize_isabelle_symbols(re.sub(r"\s+", " ", statement).strip())
 
     # ── Rule 3: obtains-form ───────────────────────────────────────────────────
     if "obtains" in stmt:
@@ -539,6 +568,7 @@ def format_aspect_with_metadata(
     attributes: list[str] | None = None,
     rule_type: str = "",
     types: str = "",
+    architecture: str = "",
 ) -> str:
     """Format an aspect value using the structured Contextual Envelope.
     
@@ -574,9 +604,10 @@ def format_aspect_with_metadata(
     loc_str = locale if locale else "global"
     rule_str = rule_type if rule_type else "theorem"
     types_str = types if types else "unspecified"
+    arch_part = f" [Architecture: {architecture}]" if architecture else ""
     
     header = (
         f"[Theory: {theory}] [Locale: {loc_str}] [Role: {label}] "
-        f"[Rule: {rule_str}] [Attributes: {attrs_str}] [Types: {types_str}]"
+        f"[Rule: {rule_str}] [Attributes: {attrs_str}] [Types: {types_str}]{arch_part}"
     )
     return f"{header}\nLemma: {lemma_name} | {label}:\n{text}"

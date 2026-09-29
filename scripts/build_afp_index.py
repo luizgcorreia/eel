@@ -291,6 +291,12 @@ def main():
                 except Exception as e:
                     print(f"[ERROR] Failed to embed/index chunk: {e}")
                     sys.exit(1)
+
+            try:
+                from edel.il.compute_landscape_height import compute_and_save_landscape_height
+                compute_and_save_landscape_height(output_dir)
+            except Exception as e:
+                print(f"Warning: Failed to compute landscape height: {e}")
         return
 
     # 4. Parse AFP Sessions
