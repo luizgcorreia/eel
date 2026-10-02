@@ -308,10 +308,10 @@ def test_eel_tools_retrieval_and_merging():
     assert deps == ["bar", "foo"]
 
     prompt = build_expert_system_prompt()
-    assert "Expert EEL Proof Formula" in prompt
-    assert "DOSSIER A" in prompt
-    assert "DOSSIER B" in prompt
-    assert "DOSSIER C" in prompt
+    assert "Epistemic Decision Protocol (EDP) State Machine" in prompt
+    assert "PHASE 0 — GOAL CLASSIFICATION" in prompt
+    assert "PHASE 1 — ARCHITECTURAL STRATEGY PROBE" in prompt
+    assert "PHASE 2 — TACTICAL & DEPENDENCY HARVESTING" in prompt
     assert "Expert Tactic Execution Ladder" in prompt
 
 
@@ -336,4 +336,163 @@ def test_completion_result_and_cost_tracking():
     assert t == "by auto"
     assert p == 3000
     assert c == 100
+
+
+def test_eval_trial_result_telemetry():
+    from edel.il.eval_agent import EvalTrialResult
+
+    trial = EvalTrialResult(
+        trial_id="test_telemetry_001",
+        arm="il_treatment",
+        session="HOL",
+        theory="HOL.Main",
+        lemma_title="add_0",
+        difficulty_tier="tier_2_direct",
+        is_perturbed=False,
+        success=True,
+        total_tokens=450,
+        prompt_tokens=400,
+        completion_tokens=50,
+        interaction_turns=1,
+        error_count=0,
+        elapsed_seconds=1.25,
+        decision_log=[
+            {"turn": 0, "phase": "Phase_0_Goal_Classification", "decision": "Routine_Formulaic"},
+            {"turn": 1, "phase": "Proof_Execution_Step", "decision": "by simp", "status": "OK"},
+        ],
+        tool_calls=[
+            {"turn": 0, "tool_name": "il_query_tactics", "items_count": 3},
+        ],
+        simplicial_path=[
+            {"turn": 1, "action": "by simp", "status": "OK", "closed": True},
+        ],
+        failure_reason="none",
+    )
+
+    d = trial.to_dict()
+    assert d["trial_id"] == "test_telemetry_001"
+    assert d["failure_reason"] == "none"
+    assert len(d["decision_log"]) == 2
+    assert len(d["tool_calls"]) == 1
+    assert len(d["simplicial_path"]) == 1
+    assert d["decision_log"][0]["phase"] == "Phase_0_Goal_Classification"
+
+
+def test_epistemic_decision_protocol_routine_and_creative():
+    from edel.il.index import NumpyRAGIndex
+
+    # Construct small mock index
+    idx = NumpyRAGIndex()
+    metadata = [
+        {
+            "theory": "TestTh",
+            "title": "lem1",
+            "problem": "x + 0 = x",
+            "interpretation": "additive identity",
+            "method": "equational-normalization | auto",
+            "finding": "apply (simp add: lem1)",
+            "proof_text": "by simp",
+        },
+        {
+            "theory": "TestTh",
+            "title": "lem2",
+            "problem": "x * 1 = x",
+            "interpretation": "multiplicative identity",
+            "method": "structural-induction on x | blast",
+            "finding": "apply (induction x; auto)",
+            "proof_text": "by auto",
+        },
+    ]
+    embs = {
+        "problem": np.random.randn(2, 64).astype(np.float32),
+        "interpretation": np.random.randn(2, 64).astype(np.float32),
+        "method": np.random.randn(2, 64).astype(np.float32),
+        "finding": np.random.randn(2, 64).astype(np.float32),
+    }
+    idx.metadata = metadata
+    idx.embeddings = embs
+
+    # 1. Test Routine Goal Execution
+    agent = ProverAgent(
+        arm="il_treatment",
+        il_index=idx,
+        llm_provider=MockProvider(["by simp"]),
+        use_edp_protocol=True,
+    )
+    routine_thm = {
+        "title": "test_routine",
+        "theory": "TestTh",
+        "statement_text": "lemma test_routine: \"x + 0 = x\"",
+        "difficulty_tier": "tier_1_terminal",
+    }
+    ctx, titles = agent.execute_epistemic_decision_protocol(routine_thm, mock_embedding=True)
+    assert "EEL DECOUPLED EPISTEMIC DOSSIER" in ctx
+    assert "Routine_Formulaic" in ctx
+    assert any(log["phase"] == "Phase_0_Goal_Classification" and log["decision"] == "Routine_Formulaic" for log in agent.decision_log)
+    assert any(call["tool_name"] == "il_query_tactics" for call in agent.tool_calls)
+
+    # 2. Test Creative / Recombinatorial Goal Execution
+    agent_creative = ProverAgent(
+        arm="il_treatment",
+        il_index=idx,
+        llm_provider=MockProvider(["proof -", "qed"]),
+        use_edp_protocol=True,
+    )
+    creative_thm = {
+        "title": "test_creative",
+        "theory": "TestTh",
+        "statement_text": "lemma test_creative: \"∀x y. f x y = f y x ⟹ g (f x y) = g (f y x)\"",
+        "difficulty_tier": "tier_5_deep_afp",
+    }
+    ctx_c, titles_c = agent_creative.execute_epistemic_decision_protocol(creative_thm, mock_embedding=True)
+    assert "Creative_Recombinatorial" in ctx_c
+    assert any(call["tool_name"] == "il_query_strategy" for call in agent_creative.tool_calls)
+    assert any(call["tool_name"] == "il_query_tactics" for call in agent_creative.tool_calls)
+    assert any(call["tool_name"] == "il_fetch_analogue" for call in agent_creative.tool_calls)
+    assert any(log["phase"] == "Phase_3_Analogue_Deep_Dive" for log in agent_creative.decision_log)
+
+
+def test_prover_agent_telemetry_flow_success_and_failure():
+    from edel.il.index import NumpyRAGIndex
+
+    idx = NumpyRAGIndex()
+    idx.metadata = [{"title": "lem1", "problem": "P", "method": "M", "finding": "F", "interpretation": "I"}]
+    idx.embeddings = {"problem": np.zeros((1, 32)), "method": np.zeros((1, 32)), "finding": np.zeros((1, 32)), "interpretation": np.zeros((1, 32))}
+
+    # Successful trial
+    agent_ok = ProverAgent(
+        arm="il_treatment",
+        il_index=idx,
+        llm_provider=MockProvider(["by simp"]),
+        use_edp_protocol=True,
+    )
+    res_ok = agent_ok.prove_theorem(
+        {"title": "lem_ok", "theory": "Test", "statement_text": "A", "difficulty_tier": "tier_1_terminal"},
+        trial_id="ok_001",
+        mock_embedding=True,
+    )
+    assert res_ok.success is True
+    assert res_ok.failure_reason == "none"
+    assert len(res_ok.simplicial_path) == 1
+    assert res_ok.simplicial_path[0]["closed"] is True
+    assert len(res_ok.decision_log) > 0
+
+    # Exhausted / turn limit trial
+    agent_fail = ProverAgent(
+        arm="il_treatment",
+        il_index=idx,
+        llm_provider=MockProvider(["apply simp", "apply blast"]),
+        use_edp_protocol=True,
+        max_turns=2,
+    )
+    res_fail = agent_fail.prove_theorem(
+        {"title": "lem_fail", "theory": "Test", "statement_text": "A", "difficulty_tier": "tier_2_direct"},
+        trial_id="fail_001",
+        mock_embedding=True,
+    )
+    assert res_fail.success is False
+    assert res_fail.failure_reason == "turn_limit_reached"
+    assert len(res_fail.simplicial_path) == 2
+    assert len(res_fail.decision_log) > 0
+
 

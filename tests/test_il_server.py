@@ -190,3 +190,36 @@ async def test_conditional_transition(mock_index_and_client):
     assert "EEL CONDITIONAL TRANSITION" in res_chain
     assert "HOL.List.append_Nil" in res_chain
 
+
+@pytest.mark.anyio
+async def test_decoupled_mcp_tools(mock_index_and_client):
+    idx, _ = mock_index_and_client
+    idx.metadata[0]["method"] = "[strategy: sequential-pipeline (target: equational-normalization, depth: 1) ⟶ done]"
+    idx.metadata[0]["proof_text"] = "by simp"
+
+    # 1. il_query_strategy
+    strat_res = await il_server.il_query_strategy(goal="[] @ ys = ys")
+    assert "EEL DECOUPLED STRATEGY BLUEPRINTS" in strat_res
+    assert "[strategy: sequential-pipeline" in strat_res
+    # Title must NOT leak in pure strategy blueprints
+    assert "HOL.List.append_Nil" not in strat_res
+
+    # 2. il_query_tactics
+    tactics_res = await il_server.il_query_tactics(goal="[] @ ys = ys")
+    assert "EEL DECOUPLED TACTIC CARDS" in tactics_res
+    assert "HOL.List.append_Nil" in tactics_res
+    assert "DIRECTIVE" in tactics_res
+
+    # 3. il_fetch_analogue
+    analogue_res = await il_server.il_fetch_analogue(lemma_title="HOL.List.append_Nil")
+    assert "EEL COMPLETE 3-SIMPLEX: HOL.List.append_Nil" in analogue_res
+    assert "Problem (Premises P):" in analogue_res
+    assert "Method (Strategy Blueprint M):" in analogue_res
+    assert "Finding (Tactic Step Map F):" in analogue_res
+    assert "Full Isabelle Proof Script:" in analogue_res
+
+    # 4. il_fetch_analogue not found
+    not_found_res = await il_server.il_fetch_analogue(lemma_title="NonExistent.Lemma")
+    assert "not found" in not_found_res
+
+

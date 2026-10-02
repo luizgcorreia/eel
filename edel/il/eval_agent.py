@@ -24,6 +24,9 @@ from edel.il.eel_tools import (
     build_expert_system_prompt,
     build_persistent_dossier_summary,
     format_epistemic_dossier,
+    format_full_simplex,
+    format_strategy_blueprints,
+    format_tactic_cards,
     multi_channel_retrieve,
     weighted_merge,
 )
@@ -79,6 +82,10 @@ class EvalTrialResult:
     cited_dependencies: list[str] = field(default_factory=list)
     retrieval_utility: float = 0.0
     transcript: list[dict[str, Any]] = field(default_factory=list)
+    decision_log: list[dict[str, Any]] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    simplicial_path: list[dict[str, Any]] = field(default_factory=list)
+    failure_reason: str = "none"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -377,6 +384,7 @@ class ProverAgent:
         max_tokens: int = 32000,
         history_window: int = 4,
         hop1_score_threshold: float = 0.60,
+        use_edp_protocol: bool = True,
     ):
         self.arm = arm
         self.backend = backend
@@ -395,6 +403,10 @@ class ProverAgent:
         self.max_tokens = max_tokens
         self.history_window = history_window
         self.hop1_score_threshold = hop1_score_threshold
+        self.use_edp_protocol = use_edp_protocol
+        self.decision_log: list[dict[str, Any]] = []
+        self.tool_calls: list[dict[str, Any]] = []
+        self.simplicial_path: list[dict[str, Any]] = []
 
     def build_system_prompt(self) -> str:
         if self.arm == "il_treatment":
@@ -441,12 +453,15 @@ class ProverAgent:
             formatted_text = format_control_rag_context(results)
             return formatted_text, retrieved_titles
 
-        # 2. Treatment I/L Epistemic Landscape — multi-channel retrieval
+        # 2. Treatment I/L Epistemic Landscape
         if self.arm == "il_treatment":
             if self.il_index is None:
                 return "", []
 
-            # Determine embedding dimension from any available aspect matrix
+            if self.use_edp_protocol:
+                return self.execute_epistemic_decision_protocol(theorem, mock_embedding=mock_embedding)
+
+            # Fallback legacy multi-channel retrieval
             dim = 1024
             for asp in ("problem", "interpretation", "method", "finding"):
                 mat = self.il_index.embeddings.get(asp)
@@ -489,6 +504,197 @@ class ProverAgent:
 
         return "", []
 
+    def execute_epistemic_decision_protocol(
+        self,
+        theorem: dict[str, Any],
+        mock_embedding: bool = False,
+    ) -> tuple[str, list[str]]:
+        """Execute the multi-phase Epistemic Decision Protocol (EDP) state machine."""
+        t0 = time.time()
+        title = theorem.get("title", "")
+        theory = theorem.get("theory", "")
+        statement = theorem.get("statement_text", "")
+        tier = theorem.get("difficulty_tier", "tier_1_terminal")
+        line = theorem.get("line", 0)
+
+        dim = 1024
+        if self.il_index is not None and self.il_index.embeddings:
+            for asp in ("problem", "interpretation", "method", "finding"):
+                mat = self.il_index.embeddings.get(asp)
+                if mat is not None and mat.shape[0] > 0:
+                    dim = mat.shape[1]
+                    break
+
+        q_vec = get_query_embedding(statement, mock=mock_embedding, dim=dim)
+
+        # Phase 0: Goal Classification (Routine vs. Recombinatorial)
+        is_routine = (tier == "tier_1_terminal") or ("simp" in statement and len(statement) < 60)
+        mode = "Routine_Formulaic" if is_routine else "Creative_Recombinatorial"
+        self.decision_log.append({
+            "turn": 0,
+            "phase": "Phase_0_Goal_Classification",
+            "decision": mode,
+            "rationale": f"Goal tier is '{tier}'; classified as {mode}.",
+            "timestamp": time.time(),
+        })
+
+        retrieved_titles: list[str] = []
+        context_blocks: list[str] = []
+
+        if is_routine:
+            # Direct tactical retrieval mode
+            t_call_start = time.time()
+            hits = self.il_index.conditional_search(
+                query_vector=q_vec,
+                search_aspect="interpretation",
+                return_aspect="finding",
+                max_results=5,
+                exclude_definitions=False,
+            )
+            hits = [h for h in hits if h.get("lemma", {}).get("title") != title]
+            retrieved_titles = [h.get("lemma", {}).get("title", "") for h in hits if h.get("lemma", {}).get("title")]
+
+            t_card = format_tactic_cards(hits, max_results=3)
+            context_blocks.append(t_card)
+
+            self.tool_calls.append({
+                "turn": 0,
+                "tool_name": "il_query_tactics",
+                "arguments": {"goal": statement[:80], "mode": "direct_formulaic"},
+                "returned_chars": len(t_card),
+                "items_count": len(hits),
+                "duration_ms": (time.time() - t_call_start) * 1000,
+            })
+            self.decision_log.append({
+                "turn": 0,
+                "phase": "Phase_2_Tactical_Fill",
+                "decision": "direct_tactical_harvest",
+                "rationale": "Direct terminal goal; bypassing strategy probe to save context.",
+                "retrieved_count": len(retrieved_titles),
+                "timestamp": time.time(),
+            })
+        else:
+            # Phase 1: Architectural Strategy Probe (Method M)
+            t_call_start = time.time()
+            strat_hits = self.il_index.conditional_search(
+                query_vector=q_vec,
+                search_aspect="problem",
+                return_aspect="method",
+                max_results=10,
+                exclude_definitions=True,
+            )
+            strat_hits = [h for h in strat_hits if h.get("lemma", {}).get("title") != title]
+            strat_block = format_strategy_blueprints(strat_hits, max_results=3)
+            context_blocks.append(strat_block)
+
+            self.tool_calls.append({
+                "turn": 0,
+                "tool_name": "il_query_strategy",
+                "arguments": {"goal": statement[:80], "premises": theorem.get("problem", "")[:80]},
+                "returned_chars": len(strat_block),
+                "items_count": len(strat_hits),
+                "duration_ms": (time.time() - t_call_start) * 1000,
+            })
+            top_strat = strat_hits[0].get("lemma", {}).get("method", "equational-normalization") if strat_hits else "equational-normalization"
+            self.decision_log.append({
+                "turn": 0,
+                "phase": "Phase_1_Strategy_Probe",
+                "decision": "strategy_blueprints_selected",
+                "selected_strategy_sample": top_strat[:90],
+                "rationale": "Extracted domain-orthogonal strategy blueprints without leaking theorem names.",
+                "timestamp": time.time(),
+            })
+
+            # Phase 2: Tactical & Dependency Harvesting (Finding F)
+            t_call_start = time.time()
+            tactic_hits = self.il_index.two_hop_search(
+                query_vector=q_vec,
+                hop1_aspect="problem",
+                hop2_aspect="method",
+                return_aspect="finding",
+                max_results=5,
+                min_hop1_score=self.hop1_score_threshold,
+            )
+            tactic_hits = [h for h in tactic_hits if h.get("lemma", {}).get("title") != title]
+            if not tactic_hits:
+                tactic_hits = self.il_index.conditional_search(
+                    query_vector=q_vec,
+                    search_aspect="interpretation",
+                    return_aspect="finding",
+                    max_results=5,
+                    exclude_definitions=False,
+                )
+                tactic_hits = [h for h in tactic_hits if h.get("lemma", {}).get("title") != title]
+
+            tactic_block = format_tactic_cards(tactic_hits, max_results=3)
+            context_blocks.append(tactic_block)
+
+            for h in tactic_hits:
+                t = h.get("lemma", {}).get("title", "")
+                if t and t not in retrieved_titles:
+                    retrieved_titles.append(t)
+
+            self.tool_calls.append({
+                "turn": 0,
+                "tool_name": "il_query_tactics",
+                "arguments": {"goal": statement[:80], "strategy_calibrated": True},
+                "returned_chars": len(tactic_block),
+                "items_count": len(tactic_hits),
+                "duration_ms": (time.time() - t_call_start) * 1000,
+            })
+            self.decision_log.append({
+                "turn": 0,
+                "phase": "Phase_2_Tactical_Fill",
+                "decision": "tactic_cards_harvested",
+                "retrieved_count": len(tactic_hits),
+                "timestamp": time.time(),
+            })
+
+            # Phase 3: On-Demand Analogue Deep Dive (if deep tier)
+            if tier in ("tier_5_deep_afp", "tier_3_structural") and retrieved_titles:
+                best_analogue = retrieved_titles[0]
+                t_call_start = time.time()
+                analogue_meta = next((m for m in self.il_index.metadata if m.get("title") == best_analogue), None)
+                if analogue_meta:
+                    analogue_block = format_full_simplex(analogue_meta)
+                    context_blocks.append(f"\n[Analogue Deep Inspection for Reference Architecture]:\n{analogue_block}")
+                    self.tool_calls.append({
+                        "turn": 0,
+                        "tool_name": "il_fetch_analogue",
+                        "arguments": {"lemma_title": best_analogue},
+                        "returned_chars": len(analogue_block),
+                        "items_count": 1,
+                        "duration_ms": (time.time() - t_call_start) * 1000,
+                    })
+                    self.decision_log.append({
+                        "turn": 0,
+                        "phase": "Phase_3_Analogue_Deep_Dive",
+                        "decision": f"inspected_{best_analogue}",
+                        "rationale": "High-complexity tier warrants deep inspection of analogue 3-simplex.",
+                        "timestamp": time.time(),
+                    })
+
+        # Phase 4: Simplicial Synthesis
+        header = (
+            f"============================================================\n"
+            f"  EEL DECOUPLED EPISTEMIC DOSSIER — Mode: {mode}\n"
+            f"  Epistemic Decision Protocol: Strategy M* decoupled from Tactics F*\n"
+            f"============================================================\n"
+        )
+        combined_context = header + "\n\n".join(context_blocks)
+        self.decision_log.append({
+            "turn": 0,
+            "phase": "Phase_4_Simplicial_Synthesis",
+            "decision": "context_assembled",
+            "total_chars": len(combined_context),
+            "retrieved_titles": retrieved_titles,
+            "elapsed_ms": (time.time() - t0) * 1000,
+            "timestamp": time.time(),
+        })
+
+        self.persistent_context = f"• Active EDP Mode: {mode} | Key Dependencies: {', '.join(retrieved_titles[:5])}"
+        return combined_context, retrieved_titles
+
     def prove_theorem(
         self,
         theorem: dict[str, Any],
@@ -505,6 +711,11 @@ class ProverAgent:
         is_perturbed = theorem.get("is_perturbed", False)
         cited_str = theorem.get("cited_deps", "")
         cited_deps = [d.strip() for d in cited_str.split(",") if d.strip() and d != "none"]
+
+        # Step 0: Initialize telemetry state for this trial
+        self.decision_log = []
+        self.tool_calls = []
+        self.simplicial_path = []
 
         # Step 1: Retrieve context
         retrieved_context, retrieved_titles = self.retrieve_context(theorem, mock_embedding=mock_embedding)
@@ -558,6 +769,10 @@ class ProverAgent:
                     cited_dependencies=cited_deps,
                     retrieval_utility=utility,
                     transcript=[{"turn": 0, "action": "init", "error": str(e)}],
+                    decision_log=list(self.decision_log),
+                    tool_calls=list(self.tool_calls),
+                    simplicial_path=list(self.simplicial_path),
+                    failure_reason="kernel_init_failed",
                 )
         else:
             current_state = f"goal (1 subgoal):\n 1. {statement}"
@@ -569,6 +784,13 @@ class ProverAgent:
         for turn in range(1, self.max_turns + 1):
             if (total_prompt_tokens + total_completion_tokens) >= self.max_tokens:
                 transcript.append({"turn": turn, "error": "Max token budget exceeded."})
+                self.decision_log.append({
+                    "turn": turn,
+                    "phase": "Budget_Check",
+                    "decision": "terminate_budget_exceeded",
+                    "total_tokens": total_prompt_tokens + total_completion_tokens,
+                    "timestamp": time.time(),
+                })
                 break
 
             # Build sliding-window messages
@@ -634,9 +856,17 @@ class ProverAgent:
             except Exception as e:
                 error_count += 1
                 transcript.append({"turn": turn, "error": f"LLM error: {e}"})
+                self.decision_log.append({
+                    "turn": turn,
+                    "phase": "LLM_Inference",
+                    "decision": "llm_error",
+                    "error": str(e),
+                    "timestamp": time.time(),
+                })
                 break
 
             step_cmd = extract_isabelle_command(comp_text)
+            pre_state = current_state
 
             # Execute in Prover
             if self.prover_client is not None:
@@ -659,6 +889,23 @@ class ProverAgent:
                         "status": "OK",
                         "closed": True,
                     })
+                    self.simplicial_path.append({
+                        "turn": turn,
+                        "pre_state": pre_state,
+                        "action": step_cmd,
+                        "status": "OK",
+                        "closed": True,
+                        "post_state": current_state,
+                    })
+                    self.decision_log.append({
+                        "turn": turn,
+                        "phase": "Proof_Execution_Step",
+                        "decision": step_cmd,
+                        "is_error": False,
+                        "status": "OK",
+                        "closed": True,
+                        "timestamp": time.time(),
+                    })
                     break
             else:
                 # Mock execution: if step is by/done/qed, close
@@ -667,6 +914,23 @@ class ProverAgent:
                 if any(step_cmd.startswith(kw) for kw in ["by", "done", "qed"]):
                     success = True
                     transcript.append({"turn": turn, "state": "0 subgoals", "step": step_cmd, "status": "OK", "closed": True})
+                    self.simplicial_path.append({
+                        "turn": turn,
+                        "pre_state": pre_state,
+                        "action": step_cmd,
+                        "status": "OK",
+                        "closed": True,
+                        "post_state": "0 subgoals",
+                    })
+                    self.decision_log.append({
+                        "turn": turn,
+                        "phase": "Proof_Execution_Step",
+                        "decision": step_cmd,
+                        "is_error": False,
+                        "status": "OK",
+                        "closed": True,
+                        "timestamp": time.time(),
+                    })
                     break
 
             history.append({"step": step_cmd, "result": step_result, "state": current_state})
@@ -676,6 +940,23 @@ class ProverAgent:
                 "step": step_cmd,
                 "status": "ERR" if is_error else "OK",
                 "closed": success,
+            })
+            self.simplicial_path.append({
+                "turn": turn,
+                "pre_state": pre_state,
+                "action": step_cmd,
+                "status": "ERR" if is_error else "OK",
+                "closed": success,
+                "post_state": current_state,
+            })
+            self.decision_log.append({
+                "turn": turn,
+                "phase": "Proof_Execution_Step",
+                "decision": step_cmd,
+                "is_error": is_error,
+                "status": "ERR" if is_error else "OK",
+                "closed": success,
+                "timestamp": time.time(),
             })
 
         # Step 4: Cleanup Prover
@@ -687,6 +968,17 @@ class ProverAgent:
 
         total_tokens = total_prompt_tokens + total_completion_tokens
         elapsed = time.time() - t_start
+
+        if success:
+            failure_reason = "none"
+        elif total_tokens >= self.max_tokens:
+            failure_reason = "budget_exceeded"
+        elif error_count >= self.max_turns:
+            failure_reason = "repeated_kernel_errors"
+        elif len(transcript) >= self.max_turns:
+            failure_reason = "turn_limit_reached"
+        else:
+            failure_reason = "proof_search_exhausted"
 
         return EvalTrialResult(
             trial_id=trial_id,
@@ -710,4 +1002,8 @@ class ProverAgent:
             cited_dependencies=cited_deps,
             retrieval_utility=utility,
             transcript=transcript,
+            decision_log=list(self.decision_log),
+            tool_calls=list(self.tool_calls),
+            simplicial_path=list(self.simplicial_path),
+            failure_reason=failure_reason,
         )

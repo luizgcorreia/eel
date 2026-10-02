@@ -590,6 +590,109 @@ def format_epistemic_dossier(
     return "\n".join(sections)
 
 
+def format_strategy_blueprints(hits: list[dict[str, Any]], max_results: int = 5) -> str:
+    """Format pure Method (M) blueprints, completely stripped of domain lemma names."""
+    if not hits:
+        return "No matching proof strategy blueprints found."
+
+    lines = [
+        "════════════════════════════════════════════════════════════",
+        "  EEL DECOUPLED STRATEGY BLUEPRINTS  [Method Aspect M]",
+        "  Domain-orthogonal architectural patterns & decomposition skeletons",
+        "════════════════════════════════════════════════════════════\n",
+    ]
+    seen_blueprints: set[str] = set()
+    count = 0
+    for h in hits:
+        meta = h.get("lemma", h)
+        method = meta.get("method", "").strip()
+        if not method or method in seen_blueprints:
+            continue
+        seen_blueprints.add(method)
+        count += 1
+        score = float(h.get("score", 0.0))
+        lines.append(f"[{count}] Strategy Blueprint  (sim: {score:.3f})")
+        for line in method.splitlines():
+            lines.append(f"    {line}")
+        lines.append("")
+        if count >= max_results:
+            break
+
+    if count == 0:
+        return "No distinct proof strategy blueprints found."
+    return "\n".join(lines).strip()
+
+
+def format_tactic_cards(hits: list[dict[str, Any]], max_results: int = 5) -> str:
+    """Format pure Finding (F) tactic step maps, directives, and cited dependencies."""
+    if not hits:
+        return "No matching tactic step maps found."
+
+    lines = [
+        "════════════════════════════════════════════════════════════",
+        "  EEL DECOUPLED TACTIC CARDS  [Finding Aspect F]",
+        "  Operational tactic sequences, cited dependencies & directives",
+        "════════════════════════════════════════════════════════════\n",
+    ]
+
+    count = 0
+    for h in hits[:max_results]:
+        meta = h.get("lemma", h)
+        title = meta.get("title", "?")
+        score = float(h.get("score", 0.0))
+        finding = meta.get("finding", "").strip()
+        directive = extract_rule_directive(meta)
+        deps = extract_cited_dependencies(finding, meta.get("proof_steps"), meta.get("proof_text", ""))
+        tactics = extract_tactic_summary(meta)
+        rule_type = meta.get("rule_type", meta.get("keyword", "theorem"))
+        attrs = meta.get("attributes", "none")
+
+        count += 1
+        lines.append(f"[{count}] `{title}`  (sim: {score:.3f})")
+        if tactics:
+            lines.append(f"    Tactic Flow:   {' ⟶ '.join(tactics)}")
+        elif finding:
+            lines.append(f"    Finding Steps: {finding[:140]}")
+        if deps:
+            lines.append(f"    Cited Deps:    {', '.join(deps[:8])}")
+        lines.append(f"    Rule Category: {rule_type} [{attrs}]")
+        lines.append(f"    → DIRECTIVE:   {directive}\n")
+
+    return "\n".join(lines).strip()
+
+
+def format_full_simplex(meta: dict[str, Any]) -> str:
+    """Format the complete 3-simplex (P, M, F, I) on demand for deep inspection."""
+    title = meta.get("title", "Unknown")
+    theory = meta.get("theory", "Main")
+    prob = meta.get("problem", "none").strip()
+    method = meta.get("method", "").strip()
+    finding = meta.get("finding", "").strip()
+    interp = meta.get("interpretation", "").strip()
+    proof_text = meta.get("proof_text", "").strip()
+    deps = meta.get("cited_deps", "none")
+    loc = f"{theory}"
+    if meta.get("file"):
+        loc += f" ({meta['file']}:{meta.get('line', '')})"
+    dep_count = meta.get("dependents_count", 0)
+
+    lines = [
+        "════════════════════════════════════════════════════════════",
+        f"  EEL COMPLETE 3-SIMPLEX: {title}",
+        f"  Location: {loc} | Landscape Dependents: {dep_count}",
+        "════════════════════════════════════════════════════════════",
+        f"• Problem (Premises P):\n  {prob}\n",
+        f"• Interpretation (Conclusion I):\n  {interp}\n",
+        f"• Method (Strategy Blueprint M):\n  {method}\n",
+        f"• Finding (Tactic Step Map F):\n  {finding}\n",
+    ]
+    if proof_text:
+        lines.append(f"• Full Isabelle Proof Script:\n```isabelle\n{proof_text}\n```\n")
+    if deps and deps != "none":
+        lines.append(f"• Verified Dependencies: {deps}\n")
+    return "\n".join(lines).strip()
+
+
 def format_conditional_transition_result(
     hits: list[dict[str, Any]],
     d_label: str,
@@ -672,17 +775,22 @@ def build_expert_system_prompt() -> str:
         "- NEVER output multiple commands on one line (e.g. NEVER write `apply (...) apply (...)`). Use ONE command per turn.\n"
         "- NEVER output `sorry`. Do NOT use `done` or `qed` unless all subgoals are genuinely discharged.\n"
         "- If a step fails, the REPL state is unchanged; re-read the error and try a different approach.\n\n"
-        "## Expert EEL Proof Formula (Epistemic Reasoning Protocol)\n"
-        "You receive an Epistemic Proof Intelligence Dossier built via EEL conditional operators:\n"
-        "- DOSSIER A: D(Proof-Strategy | Premises) — hypothesis matching & strategy selection.\n"
-        "  * structural-induction: start with `by (induction <var>) auto` or `apply (induction <var> [rule: ...])`\n"
-        "  * equational-normalization: open with `apply (simp add: <deps>)` or `by (auto simp: <deps>)`\n"
-        "  * resolution-atp: try `by (metis <deps>)` or `by (meson <deps>)`\n"
-        "  * classical-tableau: try `by (blast intro: <deps> dest: <deps>)` or `by fastforce`\n"
-        "- DOSSIER B: D(Tactic-Map | Conclusion) — conclusion similarity & closing lemma citations (e.g. definitions, rules).\n"
-        "  * Read 'Tactic Steps' and cited deps to replicate successful tactic sequences.\n"
-        "  * Use `using <deps> by blast` or `using <deps> by auto` when implication dependencies are present.\n"
-        "- DOSSIER C: D(Tactic-Map|Proof-Strategy)∘D(Proof-Strategy|Premises) — 2-hop strategy-calibrated tactics.\n\n"
+        "## Epistemic Decision Protocol (EDP) State Machine\n"
+        "To construct sound, novel proofs without exploratory thrashing, follow this state machine:\n"
+        "1. PHASE 0 — GOAL CLASSIFICATION (Routine vs. Recombinatorial):\n"
+        "   - Routine / Formulaic: immediate equational or terminal goals. Use direct automation or query tactical facts directly via `il_query_tactics(goal=...)\n"
+        "   - Non-trivial / Structural: multi-step, inductive, or out-of-distribution goals. Enter Recombinatorial Mode (Phases 1–4).\n"
+        "2. PHASE 1 — ARCHITECTURAL STRATEGY PROBE (Method M):\n"
+        "   - Probe pure strategy blueprints using `il_query_strategy(goal=..., premises=...)\n"
+        "   - Select the structural decomposition roadmap (e.g. `structural-induction`, `isar-decomposition`, `extensionality-split`).\n"
+        "   - DO NOT lock into domain lemma names; maintain an orthogonal strategy.\n"
+        "3. PHASE 2 — TACTICAL & DEPENDENCY HARVESTING (Finding F):\n"
+        "   - Calibrate tactics to your chosen strategy: `il_query_tactics(goal=..., strategy=...)\n"
+        "   - Harvest targeted rewrite rules, directives, and verified lemma dependencies (`deps`).\n"
+        "4. PHASE 3 — ON-DEMAND ANALOGUE INSPECTION (Optional):\n"
+        "   - If a specific analogue lemma warrants deep structural analysis, inspect its complete 3-simplex via `il_fetch_analogue(lemma_title=...)\n"
+        "5. PHASE 4 — SIMPLICIAL SYNTHESIS & KERNEL GROUNDING:\n"
+        "   - Synthesise candidate simplex σ* = (p, m*, f*, i) and execute the single next command in the Isabelle kernel via I/R.\n\n"
         "## Expert Tactic Execution Ladder\n"
         "1. STRUCTURAL DECOMPOSITION & EXTENSIONALITY:\n"
         "   - If the goal is an equality of functions/relations (`f = g`): open with `apply (intro ext)` or `proof (intro ext)` to work pointwise.\n"

@@ -23,6 +23,9 @@ from edel.il.eel_tools import (
     ASPECT_DISPLAY,
     build_expert_system_prompt,
     format_conditional_transition_result,
+    format_full_simplex,
+    format_strategy_blueprints,
+    format_tactic_cards,
     normalize_aspect_name,
 )
 from edel.il.index import NumpyRAGIndex
@@ -236,6 +239,107 @@ async def conditional_transition(
         search_aspect=canonical_search,
         return_aspect=canonical_return,
     )
+
+
+@mcp.tool(description=(
+    "Probe domain-orthogonal proof strategy blueprints (Method aspect M) for an open goal.\n"
+    "Returns abstract architectural roadmaps (induction schemes, Isar calculation topologies, case-split pipelines)\n"
+    "WITHOUT leaking domain theorem names or concrete tactic sequences.\n"
+    "Use in Phase 1 of the Epistemic Decision Protocol to choose your proof architecture."
+))
+async def il_query_strategy(
+    goal: str,
+    premises: str = "",
+    max_results: int = 5,
+) -> str:
+    """Retrieve pure Method blueprints stripped of domain lemma names."""
+    client = get_embedding_client()
+    query_text = premises.strip() if premises.strip() else goal.strip()
+    query_emb = client.generate_embedding(query_text)
+
+    # Search in problem space if premises provided, else interpretation space
+    search_asp = "problem" if premises.strip() else "interpretation"
+    hits = index.conditional_search(
+        query_vector=query_emb,
+        search_aspect=search_asp,
+        return_aspect="method",
+        max_results=max_results * 3,
+        exclude_definitions=True,
+    )
+    return format_strategy_blueprints(hits, max_results=max_results)
+
+
+@mcp.tool(description=(
+    "Retrieve operational tactic step maps, directives, and verified lemma dependencies (Finding aspect F).\n"
+    "Returns concrete tactic sequences, directives (simp add:, intro:, apply), and cited lemma names\n"
+    "calibrated to your target goal and optional strategy blueprint.\n"
+    "Use in Phase 2 of the Epistemic Decision Protocol to harvest tactics and lemma citations."
+))
+async def il_query_tactics(
+    goal: str,
+    strategy: str = "",
+    max_results: int = 5,
+) -> str:
+    """Retrieve Finding tactic step maps, rule directives, and cited dependencies."""
+    client = get_embedding_client()
+    query_emb = client.generate_embedding(goal)
+
+    if strategy.strip():
+        # 2-hop retrieval calibrated to strategy
+        hits = index.two_hop_search(
+            query_vector=query_emb,
+            hop1_aspect="interpretation",
+            hop2_aspect="method",
+            return_aspect="finding",
+            max_results=max_results,
+            min_hop1_score=0.50,
+        )
+    else:
+        # Direct conclusion to tactics retrieval
+        hits = index.conditional_search(
+            query_vector=query_emb,
+            search_aspect="interpretation",
+            return_aspect="finding",
+            max_results=max_results,
+            exclude_definitions=False,
+        )
+    return format_tactic_cards(hits, max_results=max_results)
+
+
+@mcp.tool(description=(
+    "Inspect the complete 3-simplex (P, M, F, I) and verified proof script of a specific known lemma on demand.\n"
+    "Use in Phase 3 of the Epistemic Decision Protocol only when deep inspection of intermediate calculations\n"
+    "or proof script details is required."
+))
+async def il_fetch_analogue(
+    lemma_title: str,
+) -> str:
+    """Fetch complete 3-simplex (P, M, F, I) and proof script for a specific lemma."""
+    target_meta = None
+    # 1. Search static metadata
+    for meta in index.metadata:
+        if meta.get("title", "").lower() == lemma_title.lower():
+            target_meta = meta
+            break
+
+    # 2. Search live session metadata
+    if target_meta is None:
+        for meta in index.live_metadata:
+            if meta.get("title", "").lower() == lemma_title.lower():
+                target_meta = meta
+                break
+
+    if target_meta is None:
+        # Fuzzy / suffix match fallback
+        for meta in index.metadata:
+            if meta.get("title", "").lower().endswith(f".{lemma_title.lower()}"):
+                target_meta = meta
+                break
+
+    if target_meta is None:
+        return f"Lemma '{lemma_title}' not found in static or session index."
+
+    return format_full_simplex(target_meta)
 
 
 @mcp.tool(description=(
