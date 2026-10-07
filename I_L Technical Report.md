@@ -137,11 +137,13 @@ lemma avl_insert [simp, intro]:
   by (induction t rule: avl.induct)
      (auto simp: avl.simps height_insert)
 ```
-Extracted Coordinates:
-* **Premises ($P$):** `fixes x :: 'a :: linorder; assumes avl t; theory: AVL-Trees`
-* **Strategy ($M$):** `proof strategy: structural-induction on (t) via avl.induct; auto equational-simplification`
-* **Tactics ($F$):** `apply (induction t rule: avl.induct); apply (auto simp: avl.simps height_insert); dependencies: [avl.simps, height_insert]`
-* **Conclusions ($I$):** `shows avl (insert x t); [simp, intro]; theory: AVL-Trees`
+Extracted coordinates (verbatim output of `extract_aspects`):
+* **Problem ($P$):** `'a :: linorder, avl t`
+* **Method ($M$):** `[strategy: structural-induction (induction t rule: avl.induct) ⟶ auto-simplification]`
+* **Finding ($F$):** `Step 1 [by_terminal: action="by (induction t rule: avl.induct) (auto simp: avl.simps height_insert)", deps: ['avl.simps', 'height_insert']]`
+* **Interpretation ($I$):** `avl (insert x t)`
+
+Rule attributes (`[simp, intro]`) and theory name (`AVL-Trees`) are not part of the aspect text; they are carried by the contextual envelope (`[Theory: AVL-Trees] [Rule: simp] [Attributes: simp, intro]`) applied before embedding.
 
 #### Example 2: Definition 0-Simplex (`HOL-Library.Multiset.mset`)
 ```isabelle

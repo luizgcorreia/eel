@@ -3,6 +3,7 @@
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{tikz}
 \usetikzlibrary{shapes,arrows.meta,positioning,calc,fit,backgrounds}
 \usepackage{enumitem}
@@ -81,7 +82,7 @@ Department of Computer Science, University of Exeter, Exeter, UK\\
 \maketitle
 
 \begin{abstract}
-Formal proof libraries such as the Archive of Formal Proofs (AFP) for Isabelle/HOL form directed networks of machine-verified deduction. Existing neural provers rely on flat retrieval over unpartitioned text or pairwise citations, causing search distraction and context exhaustion. Drawing on higher-order networks, we model formal libraries as Embedding-driven Epistemic Landscapes (EEL), representing theorems as 4-aspect 3-simplices spanning premises ($P$), proof methods ($M$), formal steps ($F$), and implications ($I$). Navigation proceeds via twelve directional transition operators between aspects, prioritised by Landscape Height centrality over the citation DAG. We implement this architecture as an open tool service (I/L, Isabelle/\allowbreak Landscape) using the Model Context Protocol (MCP). Across 140 formal theorems, simplicial navigation solves twice as many discordant theorems (8 vs.~4) as monolithic retrieval, reducing token expenditure by 16.5\%. These results demonstrate that higher-order representations suppress cognitive search friction while improving formal proof synthesis.
+Formal proof libraries such as the Archive of Formal Proofs (AFP) for Isabelle/HOL form directed networks of machine-verified deduction. Existing neural provers rely on flat retrieval over unpartitioned text or pairwise citations, causing search distraction and context exhaustion. Drawing on higher-order networks, we model formal libraries as Embedding-driven Epistemic Landscapes (EEL), representing theorems as 4-aspect 3-simplices spanning problem ($P$), method ($M$), finding ($F$), and interpretation ($I$). Navigation proceeds via twelve directional transition operators between aspects, prioritised by Landscape Height centrality over the citation DAG. We implement this architecture as an open tool service (I/L, Isabelle/\allowbreak Landscape) using the Model Context Protocol (MCP). Across 140 formal theorems, simplicial navigation solves twice as many discordant theorems (8 vs.~4) as monolithic retrieval, reducing token expenditure by 16.5\%. These results demonstrate that higher-order representations suppress cognitive search friction while improving formal proof synthesis.
 \keywords{Higher-Order Networks, Epistemic Landscapes, Theorem Proving, Isabelle/HOL, Archive of Formal Proofs.}
 \end{abstract}
 
@@ -156,11 +157,11 @@ In formal deduction, a mathematical theorem cannot be reduced to a single point 
     \draw[dashed, thick, gray!70!black] (M) -- (I);
 
     \filldraw[red!75!black] (P) circle (2.2pt) node[above left=1pt, font=\scriptsize\bfseries] {Problem $\mathbf{p}$};
-    \filldraw[blue!75!black] (I) circle (2.2pt) node[above right=1pt, font=\scriptsize\bfseries] {Implication $\mathbf{i}$};
+    \filldraw[blue!75!black] (I) circle (2.2pt) node[above=2pt, font=\scriptsize\bfseries] {Interpretation $\mathbf{i}$};
     \filldraw[green!60!black] (M) circle (2.2pt) node[below=2pt, font=\scriptsize\bfseries] {Method $\mathbf{m}$};
-    \filldraw[purple!75!black] (F) circle (2.2pt) node[below=2pt, font=\scriptsize\bfseries] {Steps $\mathbf{f}$};
+    \filldraw[purple!75!black] (F) circle (2.2pt) node[below=2pt, font=\scriptsize\bfseries] {Finding $\mathbf{f}$};
 
-    \draw[-{Latex[length=1.8mm]}, very thick, red!85!black] (P) -- node[above=1pt, font=\scriptsize\bfseries] {$\Delta_E = \mathbf{i} - \mathbf{p}$} (I);
+    \draw[-{Latex[length=1.8mm]}, very thick, red!85!black] (P) -- node[pos=0.4, below=2pt, font=\tiny\bfseries] {$\Delta_E = \mathbf{i} - \mathbf{p}$} (I);
 
     \node[font=\tiny\bfseries, color=orange!80!black] at (6.75, 1.55) {$\sigma_j \subset \mathbb{R}^d$};
     \node[font=\scriptsize\bfseries] at (6.75, -0.35) {(b) Non-Degenerate 3-Simplex $\sigma_j$};
@@ -217,8 +218,8 @@ Simplicial complexes have previously been applied in the science of science to s
 
 \medskip\noindent\textbf{Contributions.} In this paper, we develop a higher-order complex network framework for formal mathematical repositories and make three primary contributions:
 \begin{enumerate}
-    \item \textbf{EEL Instantiation for Isabelle/AFP:} Building on the EEL framework~\cite{correia_eel_inprep,correia_embedding-based_2026}, which models scientific discourse through generic epistemic aspects ($P, M, F, I$), we provide an \textbf{Isabelle/\allowbreak HOL-native reinterpretation} suited to formal deduction: premises ($P$), proof methods ($M$), tactical formal steps ($F$), and implications ($I$). We interpret directional cross-aspect transition operators $D(Y|x)$ as \textbf{Generalised Gluing Operators}, assembling individual 3-simplices into a navigable higher-order epistemic network.
-    \item \textbf{Topological Centrality via Landscape Height ($H$):} We define Landscape Height $H(v)$ on the transpose citation graph $G^T$ to quantify the downstream deductive reachability cone of each theorem, establishing a fused ranking function that suppresses ephemeral leaf lemmas in favor of foundational hubs.
+    \item \textbf{EEL Instantiation for Isabelle/AFP:} Building on the EEL framework~\cite{correia_eel_inprep,correia_embedding-based_2026}, which models scientific discourse through generic epistemic aspects ($P, M, F, I$), we keep these four roles (problem, method, finding, interpretation) and provide an \textbf{Isabelle/\allowbreak HOL-native realisation} of each, grounded in the syntax of formal proofs. We interpret directional cross-aspect transition operators $D(Y|x)$ as \textbf{Generalised Gluing Operators}, assembling individual 3-simplices into a navigable higher-order epistemic network.
+    \item \textbf{Topological Centrality via Landscape Height ($H$):} We define Landscape Height $H(v)$ on the transpose citation graph $G^T$ to quantify the downstream deductive reachability cone of each theorem, establishing a fused ranking function that suppresses ephemeral leaf lemmas in favour of foundational hubs.
     \item \textbf{I/L: Extending Isabelle Assistant with Simplicial RAG \& Live Evaluation:} We implement \textbf{I/L} (Isabelle/Landscape) as a modular MCP server extending the Isabelle Assistant ecosystem (AutoCorrode~\cite{AutoCorrode}). In a live benchmark of 140 formal theorems across 420 trials, simplicial navigation solves twice as many discordant theorems as flat monolithic RAG, while reducing completion token expenditure by 16.5\% ($p = 0.00014$) through search distraction suppression.
 \end{enumerate}
 
@@ -228,22 +229,7 @@ We formalise the AFP as a directed multi-layer graph $G = (V, E)$, where the nod
 
 \subsection{Epistemic Simplices and Aspect Segmentation}\label{sec:simplices}
 
-Following Weisberg \& Muldoon~\cite{weisberg_epistemic_2009}, each coordinate in an epistemic landscape represents a distinct \emph{approach} (in our context, a proving approach identified by the formal theorem being proved), described by multiple \emph{aspects} that jointly define its coordinates. In the EEL framework~\cite{correia_eel_inprep,correia_embedding-based_2026}, any formal artefact is modelled as a four-aspect configuration $(P, M, F, I)$ corresponding to problem, method, finding, and interpretation: a minimal closed inferential cycle grounded in Argumentative Zoning~\cite{teufel_summarizing_2002} and Peirce's inferential triad. We retain this arity-4 structure and provide an \textbf{Isabelle/HOL-specific reinterpretation} of each role suited to formal deductive mathematics, where aspects are syntactically grounded rather than extracted from prose abstracts:
-\begin{enumerate}
-    \item \textbf{Premises ($P$):} Antecedent assumptions, sort bounds (\texttt{::linorder}), type constraints, and locale contexts.
-    \item \textbf{Proof Method ($M$):} The strategic deductive roadmap (e.g., structural induction, case split, or equational rewriting pipeline).
-    \item \textbf{Formal Steps ($F$):} The tactical machinery discharging intermediate assertions, captured as coupled step maps representing the \emph{execution record} of the proof.
-    \item \textbf{Implications ($I$):} The terminal consequent with its global automation directives (\texttt{[simp]}, \texttt{[intro]}, \texttt{[elim]}).
-\end{enumerate}
-This arity-4 decomposition fixes the topological dimension of each theorem to an \textbf{epistemic 3-simplex} (a tetrahedron with 4 vertices and 6 edges), inducing $\binom{4}{2} \times 2 = 12$ directional transition operators between ordered pairs of aspects. Each aspect is embedded via $\mathcal{E} : \mathfrak{T} \to \mathbb{R}^d$ with $d = 1024$ (\texttt{voyage\allowbreak-code\allowbreak-3}), where $\mathfrak{T}$ is the space of formal code expressions. The four aspects are \emph{not} four disjoint vector spaces, but empirical submanifolds within a \textbf{single shared ambient space} $\mathbb{R}^d$, which guarantees that displacement vectors ($\Delta_{PM} = \mathbf{m} - \mathbf{p}$) and cross-aspect operator distributions are mathematically well-defined. The resulting tetrahedron is defined as the \textbf{discourse simplex} $\sigma_j = \text{conv}(\mathbf{p}_j, \mathbf{m}_j, \mathbf{f}_j, \mathbf{i}_j)$, a geometric polytope in $\mathbb{R}^d$ encoding multi-aspect relationships.
-
-Dense embeddings of formal code exhibit severe anisotropy: frequent outer syntax boilerplate (\texttt{lemma}, \texttt{fixes}, \texttt{assumes}, \texttt{shows}, \texttt{::}) dominates the top principal components, collapsing non-linear projections onto a degenerate one-dimensional curve ($\psi_2 \approx f(\psi_1)$). To recover the intrinsic mathematical geometry, we apply \emph{All-but-the-Top} spectral filtering~\cite{mu2018all}:
-\begin{equation}
-\mathbf{x}' = \mathbf{x} - \sum_{i=1}^{k} (\mathbf{x} \cdot \mathbf{u}_i)\mathbf{u}_i
-\end{equation}
-where $\mathbf{u}_i$ are eigenvectors of the corpus covariance matrix $\Sigma = \frac{1}{N}\sum_{j=1}^N \mathbf{x}_j \mathbf{x}_j^T$. To establish the threshold, we swept $k \in [0, 100]$ over 1,924 benchmark theorems: the domain cluster silhouette score surges from $S_{\text{domain}} = 0.191$ at $k=0$ to $+0.521$ at $k=5$, remaining robust at $+0.439$ at $k=10$ ($41.0\%$ variance removed). Beyond $k=10$, mathematical semantics are progressively stripped alongside syntax (domain separation collapses for $k \ge 15$; isotropic noise at $k \ge 40$). We therefore adopt $k=10$ as the robust operating baseline (full sweep data are in the Supplementary Material).
-
-The role of I/L's aspect segmentation engine is to parse each proving approach in the AFP into its four constituent aspect coordinates $(P, M, F, I)$ for embedding and indexing. To illustrate, consider a representative lemma from \texttt{AVL-Trees.AVL}~\cite{Nipkow-AFP-AVL_Trees}:
+Following Weisberg \& Muldoon~\cite{weisberg_epistemic_2009}, each coordinate in an epistemic landscape represents a distinct \emph{approach} (in our context, a proving approach identified by the formal theorem being proved), described by multiple \emph{aspects} that jointly define its coordinates. In the EEL framework~\cite{correia_eel_inprep,correia_embedding-based_2026}, any formal artefact is modelled as a four-aspect configuration $(P, M, F, I)$: \emph{Problem}, \emph{Method}, \emph{Finding}, and \emph{Interpretation}, a minimal closed inferential cycle grounded in Argumentative Zoning~\cite{teufel_summarizing_2002} and Peirce's inferential triad. We keep these roles unchanged and give each an \textbf{Isabelle/HOL-specific realisation} (Table~\ref{tab:aspects}), where aspects are syntactically grounded rather than extracted from prose abstracts. The role of I/L's aspect segmentation engine is to parse each proving approach in the AFP into these four coordinates for embedding and indexing. To illustrate, consider a representative lemma from \texttt{AVL-Trees.AVL}~\cite{Nipkow-AFP-AVL_Trees}:
 \begin{lstlisting}[language=isabelle]
 lemma avl_insert [simp, intro]:
   fixes x :: "'a :: linorder"
@@ -252,19 +238,31 @@ lemma avl_insert [simp, intro]:
      (auto simp: avl.simps height_insert)
 \end{lstlisting}
 
-\noindent Our parser extracts the four coordinates as follows:
-\begin{enumerate}
-  \item \textbf{Premises ($P$):} Type constraints and hypotheses:\\
-    \texttt{fixes x :: 'a :: linorder; assumes avl t}.
-  \item \textbf{Strategy ($M$):} The strategic roadmap inferred from the proof:\\
-    \texttt{structural-induction on (t) via avl.induct; auto}.
-  \item \textbf{Tactics ($F$):} Coupled step map: $\text{Step}_1 = \langle$\,\texttt{avl (insert x t)},\\
-    \texttt{auto simp: avl.simps}, $\{$\texttt{avl.simps}$,$ \texttt{height\_insert}$\}\rangle$.
-  \item \textbf{Conclusions ($I$):} Consequent with automation directives:\\
-    \texttt{avl (insert x t); [simp, intro]; theory: AVL-Trees}.
-\end{enumerate}
+\begin{table}[t]
+\caption{The four EEL aspects, their Isabelle/HOL realisation, and the values extracted by I/L for \texttt{avl\_insert}. Rule attributes and theory name (\texttt{[simp, intro]}, \texttt{AVL-Trees}) are carried by a metadata envelope rather than by the aspect text.}\label{tab:aspects}
+\centering\small
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.45cm}>{\raggedright\arraybackslash}p{3.9cm}>{\raggedright\arraybackslash}p{4.8cm}@{}}
+\hline
+\textbf{Aspect} & \textbf{Isabelle/HOL realisation} & \textbf{Extracted for \texttt{avl\_insert}}\\
+\hline
+\textbf{Problem} ($P$) & Context in which the claim is posed: hypotheses, sort and type constraints, locale. & \texttt{'a :: linorder, avl t}\\
+\textbf{Method} ($M$) & Proof strategy: paradigm plus decomposition roadmap (induction, case split, rewriting pipeline); never empty. & \texttt{structural-induction (induction t rule: avl.induct)} $\to$ \texttt{auto-simplification}\\
+\textbf{Finding} ($F$) & Kernel-verified derivation, as coupled step maps $\langle$claim, tactic, cited facts$\rangle$. & \texttt{Step 1 [by\_terminal; deps: avl.simps, height\_insert]}\\
+\textbf{Interpretation} ($I$) & The consequent, and its reuse as a rule (\texttt{[simp]}, \texttt{[intro]}, \texttt{[elim]}). & \texttt{avl (insert x t)}\\
+\hline
+\end{tabular}
+\end{table}
+This four-aspect decomposition fixes the topological dimension of each theorem to an \textbf{epistemic 3-simplex} (a tetrahedron with 4 vertices and 6 edges), inducing $\binom{4}{2} \times 2 = 12$ directional transition operators between ordered pairs of aspects. Each aspect is embedded via $\mathcal{E} : \mathfrak{T} \to \mathbb{R}^d$ with $d = 1024$ (\texttt{voyage\allowbreak-code\allowbreak-3}), where $\mathfrak{T}$ is the space of formal code expressions. The four aspects are \emph{not} four disjoint vector spaces, but empirical submanifolds within a \textbf{single shared ambient space} $\mathbb{R}^d$, which guarantees that displacement vectors ($\Delta_{PM} = \mathbf{m} - \mathbf{p}$) and cross-aspect operator distributions are mathematically well-defined. The resulting tetrahedron is defined as the \textbf{discourse simplex} $\sigma_j = \text{conv}(\mathbf{p}_j, \mathbf{m}_j, \mathbf{f}_j, \mathbf{i}_j)$, a geometric polytope in $\mathbb{R}^d$ encoding multi-aspect relationships.
 
-A key engineering challenge is that $\approx\!80\%$ of AFP proofs are procedural apply-scripts or one-liners (\texttt{by simp}, \texttt{by blast}), which would leave the Strategy aspect empty under a na\"ive Isar keyword parser. We resolve this by grounding strategy extraction in proof-engineering semantics: each tactic paradigm maps to a canonical descriptor (\emph{structural-induction}, \emph{equational-normalisation}, \emph{classical-tableau}, etc.), ensuring all aspects are populated so that every theorem forms a \textbf{3-simplex}. While user-defined tactic abstractions (e.g., composite methods defined via Eisbach or ML \texttt{method\_setup}) currently map to canonical automated descriptors, our parser captures all standard Isar paradigms. For each artefact $j$ we define the \textbf{Epistemic Expansion Vector} $\Delta_E(j) = \mathbf{i}_j - \mathbf{p}_j$ and its norm $N(j) = \|\mathbf{i}_j - \mathbf{p}_j\|$, which quantifies the deductive distance bridged by the proof. Aspect 3 models fine-grained tactical dependencies as \textbf{Coupled Step Maps} $\text{Step}_k = \langle \text{Claim}_k, \text{Tactic}_k, \text{CitedDeps}_k \rangle$. To prevent vector-space degeneracy from overly brief statements, every aspect is wrapped in a structured semantic envelope encoding theory name, locale scope, rule category, and type signatures prior to embedding.
+Dense embeddings of formal code exhibit severe anisotropy: frequent outer syntax boilerplate (\texttt{lemma}, \texttt{fixes}, \texttt{assumes}, \texttt{shows}, \texttt{::}) dominates the top principal components, collapsing non-linear projections onto a degenerate one-dimensional curve ($\psi_2 \approx f(\psi_1)$). To recover the intrinsic mathematical geometry, we apply \emph{All-but-the-Top} spectral filtering~\cite{mu2018all}:
+\begin{equation}
+\mathbf{x}' = \mathbf{x} - \sum_{i=1}^{k} (\mathbf{x} \cdot \mathbf{u}_i)\mathbf{u}_i
+\end{equation}
+where $\mathbf{u}_i$ are eigenvectors of the corpus covariance matrix $\Sigma = \frac{1}{N}\sum_{j=1}^N \mathbf{x}_j \mathbf{x}_j^T$. To establish the threshold, we swept $k \in [0, 100]$ over 1,924 benchmark theorems: the domain cluster silhouette score surges from $S_{\text{domain}} = 0.191$ at $k=0$ to $+0.521$ at $k=5$, remaining robust at $+0.439$ at $k=10$ ($41.0\%$ variance removed). Beyond $k=10$, mathematical semantics are progressively stripped alongside syntax (domain separation collapses for $k \ge 15$; isotropic noise at $k \ge 40$). We therefore adopt $k=10$ as the robust operating baseline (full sweep data are in the Supplementary Material).
+
+
+A key engineering challenge is that $\approx\!80\%$ of AFP proofs are procedural apply-scripts or one-liners (\texttt{by simp}, \texttt{by blast}), which would leave the Method aspect empty under a na\"ive Isar keyword parser. We resolve this by grounding strategy extraction in proof-engineering semantics: each tactic paradigm maps to a canonical descriptor (\emph{structural-induction}, \emph{equational-normalisation}, \emph{classical-tableau}, etc.), ensuring all aspects are populated so that every theorem forms a \textbf{3-simplex}. While user-defined tactic abstractions (e.g., composite methods defined via Eisbach or ML \texttt{method\_setup}) currently map to canonical automated descriptors, our parser captures all standard Isar paradigms. Definitions (\texttt{definition}, \texttt{fun}, \texttt{datatype}, etc.) introduce concepts rather than inferential leaps, so we set $P \equiv M \equiv F \equiv I$ to the defining statement, giving a 0-simplex (a point) with a metadata envelope; the 3-simplex construction applies to theorems. For each artefact $j$ we define the \textbf{Epistemic Expansion Vector} $\Delta_E(j) = \mathbf{i}_j - \mathbf{p}_j$ and its norm $N(j) = \|\mathbf{i}_j - \mathbf{p}_j\|$, which quantifies the deductive distance bridged by the proof. Aspect 3 models fine-grained tactical dependencies as \textbf{Coupled Step Maps} $\text{Step}_k = \langle \text{Claim}_k, \text{Tactic}_k, \text{CitedDeps}_k \rangle$. To prevent vector-space degeneracy from overly brief statements, every aspect is wrapped in a structured semantic envelope encoding theory name, locale scope, rule category, and type signatures prior to embedding.
 
 \subsection{Transition Operators, Gluing, and Landscape Height}\label{sec:operators}
 

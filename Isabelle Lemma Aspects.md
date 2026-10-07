@@ -64,6 +64,19 @@ Under the Expert Model, **all four aspects are guaranteed 100% non-empty ($0\%$ 
 +---------------+  +------------------+  +----------------------+  +---------------+
 ```
 
+**Vocabulary note.** The generic EEL roles (Problem, Method, Finding, Interpretation) are used throughout, including in the accompanying paper; the Isabelle-specific reading of each is: Problem = context in which the claim is posed (hypotheses, sort/type constraints, locale); Method = proof strategy and decomposition roadmap; Finding = kernel-verified derivation as a coupled step map; Interpretation = the consequent and its reuse as a rule. Envelope role labels (`Premises`, `Strategy`, `StepMap`, `Conclusion`) are retrieval-facing headers only.
+
+**Worked example (`AVL-Trees.AVL.avl_insert`, verbatim `extract_aspects` output):**
+
+| Aspect | Extracted value |
+| :--- | :--- |
+| Problem ($P$) | `'a :: linorder, avl t` |
+| Method ($M$) | `[strategy: structural-induction (induction t rule: avl.induct) ⟶ auto-simplification]` |
+| Finding ($F$) | `Step 1 [by_terminal: action="by (induction t rule: avl.induct) (auto simp: avl.simps height_insert)", deps: ['avl.simps', 'height_insert']]` |
+| Interpretation ($I$) | `avl (insert x t)` |
+
+Attributes (`[simp, intro]`) and theory name live in the contextual envelope, not in the aspect text.
+
 ---
 
 ### Aspect 1: `problem` ($P$) — Epistemic Antecedent & Domain Boundary
